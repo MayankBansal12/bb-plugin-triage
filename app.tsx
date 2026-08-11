@@ -679,7 +679,7 @@ function TriageBoard() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="grid grid-cols-1 items-center gap-3 border-b border-border px-4 py-3 md:px-5 lg:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-4 py-3 md:px-5">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Select value={projectFilter} onValueChange={setProjectFilter}>
             <SelectTrigger className="h-8 w-[170px]" aria-label="Filter by project"><Icon name="Folder" className="mr-1 size-4 text-muted-foreground" aria-hidden="true" /><SelectValue /></SelectTrigger>
@@ -692,7 +692,7 @@ function TriageBoard() {
           {(projectFilter !== "all" || machineFilter !== "all") ? <Button variant="ghost" size="sm" onClick={() => { setProjectFilter("all"); setMachineFilter("all"); }}>Clear</Button> : null}
           <span className="hidden items-center gap-1.5 text-xs text-muted-foreground lg:flex"><span className={`size-1.5 rounded-full ${connection === "connected" ? "bg-success" : "bg-warning"}`} />{connection === "connected" ? "Live" : "Reconnecting"}</span>
         </div>
-        <div className="flex items-center justify-end gap-2 lg:justify-self-end">
+        <div className="flex shrink-0 items-center justify-end gap-2">
           <NotificationCenter notifications={snapshot.notifications} unreadCount={snapshot.unreadCount} onRead={async () => { await rpc.call("markNotificationsRead"); await refresh(); }} />
           <ManageStagesDialog stages={snapshot.stages} onChanged={refresh} />
           <CreateTaskDialog stages={snapshot.stages} defaultProjectId={defaultProjectId} onCreated={refresh} />

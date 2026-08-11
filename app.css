@@ -1,8 +1,8 @@
 .triage-board {
   display: grid;
-  /* Six default stages fit comfortably on a desktop without turning cards
-     into narrow slivers. Smaller viewports keep the familiar Kanban scroll. */
-  grid-auto-columns: minmax(196px, 1fr);
+  /* Columns keep a comfortable width; extra stages scroll horizontally
+     instead of being crumbled to fit the viewport. */
+  grid-auto-columns: minmax(280px, 300px);
   grid-auto-flow: column;
   gap: 12px;
   align-items: stretch;
@@ -53,7 +53,6 @@
     grid-auto-columns: minmax(260px, 84vw);
   }
 }
-
 .triage-card {
   cursor: grab;
   border: 1px solid color-mix(in oklch, var(--ink) 10%, transparent);
