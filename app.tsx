@@ -521,11 +521,11 @@ function TaskCard({
         <Badge variant="outline" className="max-w-full truncate">{task.machineName}</Badge>
       </div>
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/70 pt-2.5">
-        <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[11px] text-muted-foreground">
           {task.scheduledAt ? <><Icon name="Clock" className="size-3.5" aria-hidden="true" />{formatWhen(task.scheduledAt)}</> : runStateLabel(task.runState)}
         </span>
         <Select value={task.stageId} onValueChange={(value) => void onMove(value)}>
-          <SelectTrigger className="h-7 w-[120px] border-0 bg-transparent px-2 text-[11px] opacity-0 shadow-none transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100" aria-label={`Move Triage #${task.number}`}>
+          <SelectTrigger className="h-7 w-[104px] shrink-0 border-0 bg-transparent px-2 text-[11px] opacity-0 shadow-none transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100" aria-label={`Move Triage #${task.number}`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>{stages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>)}</SelectContent>
@@ -679,7 +679,7 @@ function TriageBoard() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-5">
+      <div className="grid grid-cols-1 items-center gap-3 border-b border-border px-4 py-3 md:px-5 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Select value={projectFilter} onValueChange={setProjectFilter}>
             <SelectTrigger className="h-8 w-[170px]" aria-label="Filter by project"><Icon name="Folder" className="mr-1 size-4 text-muted-foreground" aria-hidden="true" /><SelectValue /></SelectTrigger>
@@ -692,7 +692,7 @@ function TriageBoard() {
           {(projectFilter !== "all" || machineFilter !== "all") ? <Button variant="ghost" size="sm" onClick={() => { setProjectFilter("all"); setMachineFilter("all"); }}>Clear</Button> : null}
           <span className="hidden items-center gap-1.5 text-xs text-muted-foreground lg:flex"><span className={`size-1.5 rounded-full ${connection === "connected" ? "bg-success" : "bg-warning"}`} />{connection === "connected" ? "Live" : "Reconnecting"}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-end gap-2 lg:justify-self-end">
           <NotificationCenter notifications={snapshot.notifications} unreadCount={snapshot.unreadCount} onRead={async () => { await rpc.call("markNotificationsRead"); await refresh(); }} />
           <ManageStagesDialog stages={snapshot.stages} onChanged={refresh} />
           <CreateTaskDialog stages={snapshot.stages} defaultProjectId={defaultProjectId} onCreated={refresh} />
@@ -714,8 +714,8 @@ function TriageBoard() {
                 if (task) void move(task, stage.id);
               }}
             >
-              <header className="flex items-center justify-between px-1 pb-3">
-                <div className="flex items-center gap-2"><h2 className="text-sm font-semibold">{stage.name}</h2><span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">{cards.length}</span></div>
+              <header className="flex items-center justify-between gap-2 px-1 pb-3">
+                <div className="flex min-w-0 items-center gap-2"><h2 className="truncate text-sm font-semibold">{stage.name}</h2><span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">{cards.length}</span></div>
                 {stage.systemRole ? <span className={`size-2 rounded-full ${stage.systemRole === "attention" ? "bg-destructive" : stage.systemRole === "done" ? "bg-success" : "bg-muted-foreground/40"}`} /> : null}
               </header>
               <div className="triage-column-scroll min-h-0 flex-1 space-y-2 overflow-y-auto pb-10">
