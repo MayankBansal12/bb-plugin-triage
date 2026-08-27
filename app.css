@@ -5,7 +5,7 @@
      snapping on load shifts the board right and clips the left padding. */
   grid-auto-columns: minmax(280px, 300px);
   grid-auto-flow: column;
-  gap: 12px;
+  gap: 0;
   align-items: stretch;
   overscroll-behavior-inline: contain;
   scrollbar-gutter: stable;
@@ -31,15 +31,13 @@
   width: 100%;
   min-height: 0;
   flex-direction: column;
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklch, var(--ink) 10%, transparent);
-  background: color-mix(in oklch, var(--ink) 2.5%, var(--canvas));
+  border-right: 1px solid color-mix(in oklch, var(--ink) 9%, transparent);
+  background: transparent;
   padding: 12px;
 }
 
 .triage-column-attention {
-  border-color: color-mix(in oklch, var(--destructive) 28%, transparent);
-  background: color-mix(in oklch, var(--destructive) 4%, var(--canvas));
+  background: color-mix(in oklch, var(--destructive) 2.5%, transparent);
 }
 
 .triage-column-scroll {
@@ -47,18 +45,201 @@
   scrollbar-color: color-mix(in oklch, var(--ink) 18%, transparent) transparent;
 }
 
+.triage-notification-icon {
+  position: relative;
+  display: inline-flex;
+}
+
+.triage-notification-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  z-index: 1;
+  display: inline-flex;
+  min-width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding-inline: 4px;
+  pointer-events: none;
+}
+
+.triage-composer-shell {
+  min-width: 0;
+}
+
+.triage-create-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.triage-create-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.triage-schedule-popover {
+  transform-origin: var(--radix-popover-content-transform-origin);
+}
+
+.triage-schedule-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid color-mix(in oklch, var(--ink) 8%, transparent);
+  border-radius: 9px;
+  background: color-mix(in oklch, var(--ink) 4%, var(--popover));
+}
+
+.triage-schedule-option {
+  display: inline-flex;
+  height: 34px;
+  min-width: 0;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.triage-schedule-option[aria-pressed="true"] {
+  background: var(--popover);
+  color: var(--foreground);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--ink) 10%, transparent),
+    0 1px 2px color-mix(in oklab, var(--ink) 8%, transparent);
+}
+
+.triage-schedule-option:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.triage-schedule-option:active {
+  transform: scale(0.97);
+}
+
+.triage-schedule-panel {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.triage-schedule-calendar {
+  width: 280px;
+  background: transparent;
+}
+
+.triage-schedule-calendar [data-slot="calendar"] {
+  width: 100%;
+}
+
+.triage-schedule-calendar button[data-day] {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border-radius: 7px;
+  font-size: 0.8125rem;
+}
+
+.triage-schedule-calendar button[data-day][data-selected-single="true"] {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+.triage-schedule-calendar button[data-day]:not([data-selected-single="true"]):active {
+  transform: scale(0.94);
+}
+
+.triage-schedule-time {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.triage-schedule-presets {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .triage-schedule-option:not([aria-pressed="true"]):hover {
+    background: color-mix(in oklch, var(--ink) 6%, transparent);
+    color: var(--foreground);
+  }
+
+  .triage-schedule-calendar button[data-day]:not([data-selected-single="true"]):hover {
+    background: color-mix(in oklch, var(--ink) 7%, transparent);
+  }
+}
+
+/* The host-owned new-thread composer portals its pickers back into this
+   plugin's CSS scope. Keep long desktop menus inside Radix's measured
+   collision area and make the content itself the wheel/trackpad scroller. */
+[role="menu"][data-side] {
+  max-height: min(
+    26rem,
+    var(--radix-dropdown-menu-content-available-height, calc(100vh - 1rem))
+  );
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
+/* Model and reasoning are separate sections in one popover. The model list
+   already scrolls on its own, but the reasoning section can still push the
+   outer popover past the viewport, so the whole picker needs a final scroll
+   boundary as well. */
+[role="dialog"][data-side]:has([aria-label="Models"]) {
+  max-height: min(
+    32rem,
+    var(--radix-popover-content-available-height, calc(100vh - 1rem))
+  );
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
 @media (max-width: 720px) {
   .triage-board {
     grid-auto-columns: minmax(260px, 84vw);
   }
+
+  .triage-create-meta {
+    grid-template-columns: minmax(0, 1fr) minmax(160px, 0.7fr);
+  }
 }
 .triage-card {
   cursor: grab;
-  border: 1px solid color-mix(in oklch, var(--ink) 10%, transparent);
+  border-color: color-mix(in oklch, var(--ink) 11%, transparent);
   border-radius: 10px;
   background: var(--card);
   padding: 12px;
-  box-shadow: 0 1px 2px color-mix(in oklab, var(--ink) 7%, transparent);
+  box-shadow: none;
   transition:
     border-color 150ms ease,
     box-shadow 150ms ease,
@@ -66,13 +247,37 @@
 }
 
 .triage-card:hover {
-  border-color: color-mix(in oklch, var(--ink) 20%, transparent);
-  box-shadow: 0 4px 12px color-mix(in oklab, var(--ink) 9%, transparent);
+  border-color: color-mix(in oklch, var(--ink) 18%, transparent);
+  box-shadow: 0 2px 8px color-mix(in oklab, var(--ink) 7%, transparent);
 }
 
 .triage-card:active {
   cursor: grabbing;
   transform: scale(0.985);
+}
+
+.triage-agent-mark {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .triage-card-actions {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 140ms ease;
+  }
+
+  .triage-card:is(:hover, :focus-within) .triage-card-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .triage-card-attention {
@@ -108,7 +313,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .triage-card {
+  .triage-card,
+  .triage-schedule-option {
     transition: none;
   }
 }

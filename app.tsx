@@ -12,8 +12,11 @@ import {
 import { toast } from "sonner";
 import type { rpcContract } from "./server";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import {
   Dialog,
@@ -65,8 +68,10 @@ interface Task {
   projectName: string;
   machineId: string | null;
   machineName: string;
+  branchName: string;
   providerId: string;
   model: string;
+  reasoningLevel: "none" | "low" | "medium" | "high" | "xhigh" | "ultracode" | "max" | "ultra";
   scheduledAt: number | null;
   threadId: string | null;
   runState:
@@ -86,6 +91,7 @@ interface Task {
 
 interface ProjectOption {
   id: string;
+  kind: "personal" | "standard";
   name: string;
 }
 
@@ -182,6 +188,46 @@ function runStateLabel(state: Task["runState"]): string {
   return labels[state];
 }
 
+function providerLabel(providerId: string): string {
+  return providerId
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function isTaskRunning(task: Task): boolean {
+  return ["dispatching", "starting", "working"].includes(task.runState);
+}
+
+function toDatetimeLocal(timestamp: number | null): string {
+  if (timestamp === null) return "";
+  const date = new Date(timestamp);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(timestamp - offset).toISOString().slice(0, 16);
+}
+
+function fromDatetimeLocal(value: string): number | null {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) throw new Error("Choose a valid date and time");
+  return timestamp;
+}
+
+function formatReasoningLevel(level: Task["reasoningLevel"]): string {
+  const labels: Record<Task["reasoningLevel"], string> = {
+    none: "No thinking",
+    low: "Low thinking",
+    medium: "Medium thinking",
+    high: "High thinking",
+    xhigh: "Extra-high thinking",
+    ultracode: "Ultracode thinking",
+    max: "Max thinking",
+    ultra: "Ultra thinking",
+  };
+  return labels[level];
+}
+
 function NotificationCenter({
   notifications,
   unreadCount,
@@ -206,13 +252,15 @@ function NotificationCenter({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="icon" aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`} className="relative">
-          <Icon name="Mail" aria-hidden="true" />
-          {unreadCount > 0 ? (
-            <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          ) : null}
+        <Button variant="outline" size="icon" aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}>
+          <span className="triage-notification-icon" aria-hidden="true">
+            <Icon name="Mail" />
+            {unreadCount > 0 ? (
+              <span className="triage-notification-badge">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            ) : null}
+          </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(380px,calc(100vw-24px))] p-0">
@@ -273,6 +321,195 @@ function NotificationCenter({
   );
 }
 
+function titleFromPrompt(prompt: string): string {
+  const line = prompt.split("\n").map((part) => part.trim()).find(Boolean);
+  return line ? line.slice(0, 160) : "";
+}
+
+function formatLocalScheduled(value: string): string {
+  if (!value) return "Pick a time";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function nextScheduleTime(): number {
+  const date = new Date(Date.now() + 3_600_000);
+  date.setMinutes(Math.ceil(date.getMinutes() / 15) * 15, 0, 0);
+  return date.getTime();
+}
+
+function localDateAt(hour: number, minute: number, dayOffset: number): number {
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffset);
+  date.setHours(hour, minute, 0, 0);
+  if (date.getTime() <= Date.now()) date.setDate(date.getDate() + 1);
+  return date.getTime();
+}
+
+type StartMode = "now" | "later" | "manual";
+
+function formatStartDistance(mode: StartMode, scheduledLocal: string): string {
+  if (mode === "now") return "Starts immediately";
+  if (mode === "manual") return "Stays on the board until you run it";
+  const timestamp = new Date(scheduledLocal).getTime();
+  if (!Number.isFinite(timestamp)) return "Choose a date and time";
+  const minutes = Math.max(1, Math.round((timestamp - Date.now()) / 60_000));
+  if (minutes < 120) return `Starts in ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `Starts in ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  const days = Math.round(hours / 24);
+  return `Starts in ${days} ${days === 1 ? "day" : "days"}`;
+}
+
+function StartPicker({
+  mode,
+  scheduledLocal,
+  onModeChange,
+  onScheduledLocalChange,
+}: {
+  mode: StartMode;
+  scheduledLocal: string;
+  onModeChange: (mode: StartMode) => void;
+  onScheduledLocalChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const scheduledDate = scheduledLocal ? new Date(scheduledLocal) : undefined;
+  const scheduledTime = scheduledDate
+    ? `${String(scheduledDate.getHours()).padStart(2, "0")}:${String(scheduledDate.getMinutes()).padStart(2, "0")}`
+    : "09:00";
+
+  const selectMode = (nextMode: StartMode) => {
+    onModeChange(nextMode);
+    if (nextMode === "later" && !scheduledLocal) {
+      onScheduledLocalChange(toDatetimeLocal(nextScheduleTime()));
+    }
+    if (nextMode !== "later") setOpen(false);
+  };
+
+  const selectScheduledDay = (day: Date | undefined) => {
+    if (!day) return;
+    const next = scheduledDate ?? new Date(nextScheduleTime());
+    next.setFullYear(day.getFullYear(), day.getMonth(), day.getDate());
+    onScheduledLocalChange(toDatetimeLocal(next.getTime()));
+  };
+
+  const selectScheduledTime = (value: string) => {
+    const [hours, minutes] = value.split(":").map(Number);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return;
+    const next = scheduledDate ?? new Date(nextScheduleTime());
+    next.setHours(hours, minutes, 0, 0);
+    onScheduledLocalChange(toDatetimeLocal(next.getTime()));
+  };
+
+  const option = (nextMode: StartMode, label: string, icon: "Clock" | "Calendar" | "Pause") => (
+    <button
+      type="button"
+      className="triage-schedule-option"
+      aria-pressed={mode === nextMode}
+      onClick={() => selectMode(nextMode)}
+    >
+      <Icon name={icon} className="size-4" aria-hidden="true" />
+      <span>{label}</span>
+    </button>
+  );
+
+  return (
+    <div className="grid min-w-0 gap-1.5">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className="h-9 w-full justify-start gap-2 px-3 font-normal"
+            aria-label="Choose when this task starts"
+          >
+            <Icon
+              name={mode === "manual" ? "Pause" : mode === "later" ? "Calendar" : "Clock"}
+              className="size-4 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+            {mode === "now" ? (
+              <span>Run now</span>
+            ) : mode === "manual" ? (
+              <span>Keep on board</span>
+            ) : (
+              <span className="truncate">{formatLocalScheduled(scheduledLocal)}</span>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          sideOffset={8}
+          className="triage-schedule-popover w-[360px] p-3"
+          mobileTitle="Choose a start time"
+        >
+          <div className="triage-schedule-options" aria-label="Start behavior">
+            {option("now", "Run now", "Clock")}
+            {option("later", "Later", "Calendar")}
+            {option("manual", "On board", "Pause")}
+          </div>
+          {mode === "later" ? (
+            <div className="triage-schedule-panel">
+              <Calendar
+                mode="single"
+                selected={scheduledDate}
+                onSelect={selectScheduledDay}
+                disabled={{ before: new Date(new Date().setHours(0, 0, 0, 0)) }}
+                className="triage-schedule-calendar mx-auto p-0"
+                classNames={{
+                  month: "flex w-full flex-col gap-3",
+                  month_grid: "w-full border-collapse",
+                  weekdays: "grid grid-cols-7",
+                  weekday: "flex h-8 items-center justify-center text-[11px] font-medium text-muted-foreground",
+                  week: "grid grid-cols-7",
+                  day: "relative flex size-10 items-center justify-center p-0 text-center",
+                  outside: "text-muted-foreground/45",
+                  disabled: "text-muted-foreground/30",
+                  today: "text-foreground",
+                }}
+              />
+              <div className="triage-schedule-time">
+                <Icon name="Clock" className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  type="time"
+                  value={scheduledTime}
+                  onChange={(event) => selectScheduledTime(event.target.value)}
+                  aria-label="Scheduled time"
+                  className="h-9"
+                />
+              </div>
+              <div className="triage-schedule-presets">
+                {[
+                  { label: "+1 hour", at: Date.now() + 3_600_000 },
+                  { label: "Tonight", at: localDateAt(20, 0, 0) },
+                  { label: "Tomorrow", at: localDateAt(9, 0, 1) },
+                ].map((preset) => (
+                  <Button
+                    key={preset.label}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 flex-1 px-2 text-xs"
+                    onClick={() => onScheduledLocalChange(toDatetimeLocal(preset.at))}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+      <span className="text-xs font-normal text-muted-foreground">
+        {formatStartDistance(mode, scheduledLocal)}
+      </span>
+    </div>
+  );
+}
+
 function CreateTaskDialog({
   stages,
   defaultProjectId,
@@ -285,26 +522,30 @@ function CreateTaskDialog({
   const rpc = useRpc<typeof rpcContract>();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [stageId, setStageId] = useState(stages.find((stage) => stage.systemRole === "intake")?.id ?? stages[0]?.id ?? "");
-  const [runMode, setRunMode] = useState<"board" | "now" | "later">("board");
+  const [runMode, setRunMode] = useState<StartMode>("now");
   const [scheduledLocal, setScheduledLocal] = useState("");
-
-  useEffect(() => {
-    if (!stageId && stages[0]) setStageId(stages[0].id);
-  }, [stageId, stages]);
+  const intakeStage = useMemo(
+    () => stages.find((stage) => stage.systemRole === "intake") ?? stages[0],
+    [stages],
+  );
 
   const submit = async (request: NewThreadRequest) => {
-    const cleanTitle = title.trim();
+    const description = descriptionFromRequest(request);
+    const cleanTitle = title.trim() || titleFromPrompt(description);
     if (!cleanTitle) {
-      toast.error("Add a title before creating this card");
+      toast.error("Describe the task or add a title");
       throw new Error("A task title is required");
     }
-    if (!stageId) {
-      toast.error("Choose a stage");
+    if (!intakeStage) {
+      toast.error("No starting stage is configured");
       throw new Error("A stage is required");
     }
     let scheduledAt: number | null = null;
     if (runMode === "later") {
+      if (!scheduledLocal) {
+        toast.error("Pick a date and time to schedule this task");
+        throw new Error("A schedule is required");
+      }
       scheduledAt = new Date(scheduledLocal).getTime();
       if (!Number.isFinite(scheduledAt) || scheduledAt <= Date.now()) {
         toast.error("Choose a future date and time");
@@ -313,8 +554,8 @@ function CreateTaskDialog({
     }
     const task = await rpc.call("createTask", {
       title: cleanTitle,
-      description: descriptionFromRequest(request),
-      stageId,
+      description,
+      stageId: intakeStage.id,
       scheduledAt,
       runNow: runMode === "now",
       request,
@@ -326,11 +567,11 @@ function CreateTaskDialog({
         description:
           runMode === "later" && scheduledAt
             ? `Scheduled ${formatWhen(scheduledAt)}.`
-            : "Added to the board.",
+            : "Added to the board. Run it when ready.",
       });
     }
     setTitle("");
-    setRunMode("board");
+    setRunMode("now");
     setScheduledLocal("");
     setOpen(false);
     await onCreated();
@@ -344,52 +585,37 @@ function CreateTaskDialog({
           New task
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="triage-create-dialog max-h-[92vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Create a Triage task</DialogTitle>
-          <DialogDescription>Describe the work, assign its BB agent, and decide when it should start.</DialogDescription>
+          <DialogTitle>New triage task</DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4 border-b border-border pb-5 md:grid-cols-[minmax(0,1fr)_190px]">
-          <label className="grid gap-1.5 text-sm font-medium">
-            Title
-            <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="What needs to happen?" />
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            Starting stage
-            <Select value={stageId} onValueChange={setStageId}>
-              <SelectTrigger><SelectValue placeholder="Choose stage" /></SelectTrigger>
-              <SelectContent>{stages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            Start
-            <Select value={runMode} onValueChange={(value) => setRunMode(value as typeof runMode)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="board">Keep on board</SelectItem>
-                <SelectItem value="now">Run now</SelectItem>
-                <SelectItem value="later">Schedule for later</SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-          {runMode === "later" ? (
-            <label className="grid gap-1.5 text-sm font-medium">
-              Scheduled time
-              <Input type="datetime-local" value={scheduledLocal} onChange={(event) => setScheduledLocal(event.target.value)} />
-            </label>
-          ) : (
-            <div className="hidden md:block" />
-          )}
-        </div>
-        <div className="min-h-[360px] pt-1">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Instructions and assignment</p>
+        <div className="triage-composer-shell">
           <NewThreadComposer
             defaultProjectId={defaultProjectId ?? undefined}
             onSubmit={submit}
-            placeholder="Describe the task, expected outcome, and anything the agent should verify…"
+            placeholder="Describe the work and what done looks like…"
             draftKey="triage-create-task"
             layout="document"
           />
+        </div>
+        <div className="triage-create-meta">
+          <label className="triage-create-field">
+            <span>Title <span className="font-normal text-muted-foreground">(optional)</span></span>
+            <Input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Optional card title"
+            />
+          </label>
+          <div className="triage-create-field triage-create-start">
+            <span>Start</span>
+            <StartPicker
+              mode={runMode}
+              scheduledLocal={scheduledLocal}
+              onModeChange={setRunMode}
+              onScheduledLocalChange={setScheduledLocal}
+            />
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -489,18 +715,27 @@ function TaskCard({
   task,
   stages,
   onOpen,
+  onEdit,
   onMove,
+  onRun,
+  onStop,
+  onDelete,
   onDragStart,
 }: {
   task: Task;
   stages: Stage[];
   onOpen: () => void;
+  onEdit: () => void;
   onMove: (stageId: string) => Promise<void>;
+  onRun: () => Promise<void>;
+  onStop: () => Promise<void>;
+  onDelete: () => Promise<void>;
   onDragStart: () => void;
 }) {
+  const running = isTaskRunning(task);
   return (
-    <article
-      className={`triage-card group ${task.runState === "failed" ? "triage-card-attention" : ""}`}
+    <Card
+      className={`triage-card group relative ${task.runState === "failed" ? "triage-card-attention" : ""}`}
       draggable
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = "move";
@@ -510,15 +745,46 @@ function TaskCard({
       <button className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={onOpen}>
         <div className="flex items-start justify-between gap-3">
           <span className="text-xs font-medium text-muted-foreground">Triage #{task.number}</span>
-          <span className={`triage-run-dot triage-run-${task.runState}`} aria-label={runStateLabel(task.runState)} />
+          <span className={`triage-run-dot triage-run-${task.runState} ${running ? "mr-14" : "mr-7"}`} aria-label={runStateLabel(task.runState)} />
         </div>
         <h3 className="mt-1.5 text-sm font-semibold leading-snug text-foreground">{task.title}</h3>
-        {task.description ? <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{task.description}</p> : null}
         {task.attentionReason ? <p className="mt-2 rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">{task.attentionReason}</p> : null}
       </button>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <Badge variant="secondary" className="max-w-full truncate">{task.projectName}</Badge>
-        <Badge variant="outline" className="max-w-full truncate">{task.machineName}</Badge>
+      <div className="triage-card-actions absolute right-1.5 top-1.5 flex items-center rounded-md border border-border bg-card p-0.5 shadow-sm">
+        {!task.threadId ? (
+          <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" aria-label={`Run Triage #${task.number}`} onClick={() => void onRun()}>
+            <Icon name="Play" className="size-3.5" aria-hidden="true" />
+          </Button>
+        ) : running ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-60 hover:opacity-100 focus-visible:opacity-100"
+            aria-label={`Cancel Triage #${task.number}`}
+            onClick={() => void onStop()}
+          >
+            <Icon name="Square" className="size-4" aria-hidden="true" />
+          </Button>
+        ) : null}
+        <Button variant="ghost" size="icon" className="size-7 text-muted-foreground" aria-label={`Edit Triage #${task.number}`} onClick={onEdit}>
+          <Icon name="Edit" className="size-3.5" aria-hidden="true" />
+        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" aria-label={`Delete Triage #${task.number}`}>
+              <Icon name="Trash2" className="size-3.5" aria-hidden="true" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader><AlertDialogTitle>Delete Triage #{task.number}?</AlertDialogTitle><AlertDialogDescription>The linked BB thread is kept. The card and its event history will be removed.</AlertDialogDescription></AlertDialogHeader>
+            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => void onDelete()}>Delete card</AlertDialogAction></AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+      <div className="mt-3 space-y-1.5 text-[11px] text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-1.5"><Icon name="Folder" className="size-3.5 shrink-0" aria-hidden="true" /><span className="truncate">{task.projectName}</span><span className="text-border">/</span><Icon name="GitBranch" className="size-3.5 shrink-0" aria-hidden="true" /><span className="truncate" title={task.branchName}>{task.branchName}</span></div>
+        <div className="flex min-w-0 items-center gap-1.5"><Icon name="Laptop" className="size-3.5 shrink-0" aria-hidden="true" /><span className="truncate">{task.machineName}</span></div>
+        <div className="flex min-w-0 items-center gap-1.5" title={`${task.providerId} · ${task.model} · ${formatReasoningLevel(task.reasoningLevel)}`}><span className="triage-agent-mark"><Icon name="AiContentGenerator01" className="size-3.5" aria-hidden="true" /></span><span className="truncate text-[10px] font-medium">{providerLabel(task.providerId)} · {task.model}</span></div>
       </div>
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/70 pt-2.5">
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[11px] text-muted-foreground">
@@ -531,11 +797,11 @@ function TaskCard({
           <SelectContent>{stages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>)}</SelectContent>
         </Select>
       </div>
-    </article>
+    </Card>
   );
 }
 
-function TaskDetailDialog({
+function EditTaskDialog({
   task,
   stages,
   open,
@@ -549,7 +815,130 @@ function TaskDetailDialog({
   onChanged: () => Promise<void>;
 }) {
   const rpc = useRpc<typeof rpcContract>();
-  const navigate = useBbNavigate();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [stageId, setStageId] = useState("");
+  const [startMode, setStartMode] = useState<StartMode>("manual");
+  const [scheduledLocal, setScheduledLocal] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!task || !open) return;
+    setTitle(task.title);
+    setDescription(task.description);
+    setStageId(task.stageId);
+    setScheduledLocal(toDatetimeLocal(task.scheduledAt));
+    setStartMode(task.scheduledAt === null ? "manual" : "later");
+  }, [open, task?.id]);
+
+  if (!task) return null;
+
+  const save = async () => {
+    const cleanTitle = title.trim();
+    if (!cleanTitle) {
+      toast.error("Add a title before saving");
+      return;
+    }
+    try {
+      setSaving(true);
+      const scheduledAt = startMode === "later" ? fromDatetimeLocal(scheduledLocal) : null;
+      if (startMode === "later" && (scheduledAt === null || scheduledAt <= Date.now())) {
+        toast.error("Choose a future date and time");
+        return;
+      }
+      await rpc.call("updateTask", {
+        number: task.number,
+        title: cleanTitle,
+        description,
+        stageId,
+        scheduledAt: task.threadId ? task.scheduledAt : scheduledAt,
+      });
+      if (!task.threadId && startMode === "now") {
+        await rpc.call("runTask", { number: task.number });
+      }
+      toast.success(`Updated Triage #${task.number}`);
+      await onChanged();
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit Triage #{task.number}</DialogTitle>
+          <DialogDescription>
+            Update the card details{task.threadId ? ". Existing agent instructions are not rewritten." : " and its future agent instructions."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <label className="grid gap-1.5 text-sm font-medium">
+            Title
+            <Input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">
+            Instructions
+            <Textarea value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-40 resize-y" maxLength={50_000} />
+          </label>
+          <div className="grid items-start gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-medium">
+              Stage
+              <Select value={stageId} onValueChange={setStageId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{stages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            {task.threadId ? (
+              <div className="grid gap-1.5 text-sm font-medium">
+                Start
+                <div className="flex h-9 items-center rounded-md border border-border px-3 font-normal text-muted-foreground">
+                  Already started
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-1.5 text-sm font-medium">
+                <span>Start</span>
+                <StartPicker
+                  mode={startMode}
+                  scheduledLocal={scheduledLocal}
+                  onModeChange={setStartMode}
+                  onScheduledLocalChange={setScheduledLocal}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={() => void save()} disabled={saving || !stageId}>
+            {saving ? <Icon name="Spinner" className="animate-spin" aria-hidden="true" /> : <Icon name="Check" aria-hidden="true" />}
+            Save changes
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+function TaskDetailDialog({
+  task,
+  stages,
+  open,
+  onOpenChange,
+  onEdit,
+  onChanged,
+}: {
+  task: Task | null;
+  stages: Stage[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onEdit: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const rpc = useRpc<typeof rpcContract>();
   if (!task) return null;
 
   const action = async (operation: () => Promise<unknown>, message: string) => {
@@ -584,7 +973,7 @@ function TaskDetailDialog({
         <dl className="grid gap-3 rounded-lg border border-border bg-card p-4 text-sm sm:grid-cols-2">
           <div><dt className="text-xs text-muted-foreground">Project</dt><dd className="mt-0.5 font-medium">{task.projectName}</dd></div>
           <div><dt className="text-xs text-muted-foreground">Machine</dt><dd className="mt-0.5 font-medium">{task.machineName}</dd></div>
-          <div><dt className="text-xs text-muted-foreground">Agent</dt><dd className="mt-0.5 truncate font-medium">{task.providerId} · {task.model}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Agent</dt><dd className="mt-0.5 truncate font-medium">{task.providerId} · {task.model} · {formatReasoningLevel(task.reasoningLevel)}</dd></div>
           <div><dt className="text-xs text-muted-foreground">Stage</dt><dd className="mt-1"><Select value={task.stageId} onValueChange={(stageId) => void action(() => rpc.call("moveTask", { number: task.number, stageId }), `Moved Triage #${task.number}`)}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent>{stages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>)}</SelectContent></Select></dd></div>
         </dl>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
@@ -596,8 +985,9 @@ function TaskDetailDialog({
             </AlertDialogContent>
           </AlertDialog>
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={onEdit}><Icon name="Edit" aria-hidden="true" />Edit</Button>
             {!task.threadId ? <Button variant="outline" onClick={() => void action(() => rpc.call("runTask", { number: task.number }), `Started Triage #${task.number}`)}><Icon name="Play" aria-hidden="true" />Run now</Button> : null}
-            {task.threadId ? <Button onClick={() => navigate.toThread(task.threadId!)}><Icon name="MessageSquare" aria-hidden="true" />Open agent thread</Button> : null}
+            {isTaskRunning(task) ? <Button variant="outline" onClick={() => void action(() => rpc.call("stopTask", { number: task.number }), `Stopped Triage #${task.number}`)}><Icon name="Square" aria-hidden="true" />Stop agent</Button> : null}
           </div>
         </div>
       </DialogContent>
@@ -608,6 +998,7 @@ function TaskDetailDialog({
 function TriageBoard() {
   const rpc = useRpc<typeof rpcContract>();
   const { projectId: routeProjectId } = useBbContext();
+  const navigate = useBbNavigate();
   const connection = useRealtimeConnectionState();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -615,6 +1006,7 @@ function TriageBoard() {
   const [machineFilter, setMachineFilter] = useState("all");
   const [draggedNumber, setDraggedNumber] = useState<number | null>(null);
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
+  const [editingNumber, setEditingNumber] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -667,6 +1059,16 @@ function TriageBoard() {
     }
   };
 
+  const taskAction = async (operation: () => Promise<unknown>, message: string) => {
+    try {
+      await operation();
+      toast.success(message);
+      await refresh();
+    } catch (actionError) {
+      toast.error(actionError instanceof Error ? actionError.message : String(actionError));
+    }
+  };
+
   if (!snapshot && !error) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><Icon name="Spinner" className="mr-2 size-4 animate-spin" aria-hidden="true" />Loading Triage…</div>;
   }
@@ -675,7 +1077,10 @@ function TriageBoard() {
   }
 
   const selectedTask = snapshot.tasks.find((task) => task.number === selectedNumber) ?? null;
+  const editingTask = snapshot.tasks.find((task) => task.number === editingNumber) ?? null;
   const defaultProjectId = projectFilter !== "all" ? projectFilter : routeProjectId;
+  const personalProject = snapshot.projects.find((project) => project.kind === "personal");
+  const standardProjects = snapshot.projects.filter((project) => project.kind === "standard");
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
@@ -683,7 +1088,11 @@ function TriageBoard() {
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Select value={projectFilter} onValueChange={setProjectFilter}>
             <SelectTrigger className="h-8 w-[170px]" aria-label="Filter by project"><Icon name="Folder" className="mr-1 size-4 text-muted-foreground" aria-hidden="true" /><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="all">All projects</SelectItem>{snapshot.projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
+            <SelectContent>
+              {personalProject ? <SelectItem value={personalProject.id}>Home (no project)</SelectItem> : null}
+              <SelectItem value="all">All projects</SelectItem>
+              {standardProjects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
+            </SelectContent>
           </Select>
           <Select value={machineFilter} onValueChange={setMachineFilter}>
             <SelectTrigger className="h-8 w-[180px]" aria-label="Filter by machine"><Icon name="Laptop" className="mr-1 size-4 text-muted-foreground" aria-hidden="true" /><SelectValue /></SelectTrigger>
@@ -720,7 +1129,21 @@ function TriageBoard() {
               </header>
               <div className="triage-column-scroll min-h-0 flex-1 space-y-2 overflow-y-auto pb-10">
                 {cards.map((task) => (
-                  <TaskCard key={task.id} task={task} stages={snapshot.stages} onOpen={() => setSelectedNumber(task.number)} onMove={(stageId) => move(task, stageId)} onDragStart={() => setDraggedNumber(task.number)} />
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    stages={snapshot.stages}
+                    onOpen={() => {
+                      if (task.threadId) navigate.toThread(task.threadId);
+                      else setSelectedNumber(task.number);
+                    }}
+                    onEdit={() => { setSelectedNumber(null); setEditingNumber(task.number); }}
+                    onMove={(stageId) => move(task, stageId)}
+                    onRun={() => taskAction(() => rpc.call("runTask", { number: task.number }), `Started Triage #${task.number}`)}
+                    onStop={() => taskAction(() => rpc.call("stopTask", { number: task.number }), `Stopped Triage #${task.number}`)}
+                    onDelete={() => taskAction(() => rpc.call("deleteTask", { number: task.number }), `Deleted Triage #${task.number}`)}
+                    onDragStart={() => setDraggedNumber(task.number)}
+                  />
                 ))}
                 {cards.length === 0 ? <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-xs text-muted-foreground">Drop a task here</div> : null}
               </div>
@@ -729,7 +1152,21 @@ function TriageBoard() {
         })}
       </div>
 
-      <TaskDetailDialog task={selectedTask} stages={snapshot.stages} open={selectedTask !== null} onOpenChange={(next) => { if (!next) setSelectedNumber(null); }} onChanged={refresh} />
+      <TaskDetailDialog
+        task={selectedTask}
+        stages={snapshot.stages}
+        open={selectedTask !== null}
+        onOpenChange={(next) => { if (!next) setSelectedNumber(null); }}
+        onEdit={() => { setSelectedNumber(null); if (selectedTask) setEditingNumber(selectedTask.number); }}
+        onChanged={refresh}
+      />
+      <EditTaskDialog
+        task={editingTask}
+        stages={snapshot.stages}
+        open={editingTask !== null}
+        onOpenChange={(next) => { if (!next) setEditingNumber(null); }}
+        onChanged={refresh}
+      />
     </div>
   );
 }
