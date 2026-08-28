@@ -45,7 +45,7 @@ function TriageSidebarSection({
   isCompactViewport,
   onNavigate,
   searchQuery,
-}: Omit<PluginThreadListProps, "experimental_Original">) {
+}: Omit<PluginThreadListProps, "Original" | "experimental_Original">) {
   const { snapshot, refresh } = useTriage();
   const navigate = useBbNavigate();
   const threads = experimental_useSidebarThreadActions();
@@ -173,7 +173,7 @@ function TriageSidebarSection({
  * the user opts in — while the setting loads, the sidebar is untouched.
  */
 function SidebarThreadList({
-  experimental_Original: Original,
+  Original,
   ...props
 }: PluginThreadListProps) {
   const { values } = useSettings();

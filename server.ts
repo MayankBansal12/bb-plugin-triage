@@ -1004,9 +1004,11 @@ export default async function plugin(bb: BbPluginApi) {
       "Move the Triage card assigned to this BB thread into another workflow stage and leave a concise handoff summary.",
     instructions:
       "Use this whenever your assigned Triage work becomes ready for human review, completion, a clearly named custom stage, or needs user attention.",
-    experimental_statusLabels: {
-      pending: "Updating the Triage card",
-      completed: "Updated the Triage card",
+    presentation: {
+      label: {
+        pending: "Updating the Triage card",
+        completed: "Updated the Triage card",
+      },
     },
     parameters: z.object({
       number: z.number().int().positive().describe("The number in Triage #42"),
