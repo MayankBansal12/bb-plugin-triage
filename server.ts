@@ -52,6 +52,8 @@ const taskSchema = z.object({
 const notificationSchema = z.object({
   id: z.string(),
   taskNumber: z.number().int().nullable(),
+  action: z.string(),
+  taskTitle: z.string().nullable(),
   title: z.string(),
   body: z.string(),
   level: z.enum(["info", "success", "attention"]),
@@ -68,6 +70,34 @@ const machineOptionSchema = z.object({
   id: z.string(),
   name: z.string(),
   status: z.enum(["connected", "disconnected"]),
+});
+
+const reasoningLevelSchema = z.enum([
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "ultracode",
+  "max",
+  "ultra",
+]);
+
+const agentOptionsSchema = z.object({
+  providers: z.array(
+    z.object({ id: z.string(), name: z.string(), available: z.boolean() }),
+  ),
+  models: z.array(
+    z.object({
+      id: z.string(),
+      providerId: z.string(),
+      model: z.string(),
+      displayName: z.string(),
+      description: z.string(),
+      supportedReasoningEfforts: z.array(reasoningLevelSchema),
+      defaultReasoningEffort: reasoningLevelSchema,
+    }),
+  ),
 });
 
 const executionSourceSchema = z.enum(["explicit", "client-preference"]);
@@ -145,9 +175,17 @@ export const rpcContract = defineRpcContract({
         description: z.string().max(50_000),
         stageId: z.string().min(1),
         scheduledAt: z.number().int().nullable(),
+        /** Agent retargeting; accepted only before a thread exists. */
+        providerId: z.string().min(1).optional(),
+        model: z.string().min(1).optional(),
+        reasoningLevel: reasoningLevelSchema.optional(),
       })
       .strict(),
     output: taskSchema,
+  },
+  agentOptions: {
+    input: z.null(),
+    output: agentOptionsSchema,
   },
   runTask: {
     input: z.object({ number: z.number().int().positive() }).strict(),
@@ -182,7 +220,16 @@ export const rpcContract = defineRpcContract({
     output: z.object({ ok: z.literal(true) }),
   },
   markNotificationsRead: {
-    input: z.null(),
+    input: z
+      .object({
+        /** null is the explicit "mark all" action; ids is a popover snapshot. */
+        ids: z.array(z.string().min(1)).max(50).nullable(),
+      })
+      .strict(),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  deleteNotifications: {
+    input: z.object({ ids: z.array(z.string().min(1)).min(1).max(50) }).strict(),
     output: z.object({ ok: z.literal(true) }),
   },
 });
@@ -227,6 +274,8 @@ interface TaskRow {
 interface NotificationRow {
   id: string;
   task_number: number | null;
+  action: string | null;
+  task_title: string | null;
   title: string;
   body: string;
   level: "info" | "success" | "attention";
@@ -291,6 +340,10 @@ const migrations = [
   )`,
   `INSERT OR IGNORE INTO triage_meta (key, value)
     SELECT 'next_task_number', COALESCE(MAX(number), 0) + 1 FROM triage_tasks`,
+  // The notification list shows "what happened" above "which card it happened
+  // to", so both are stored rather than parsed back out of the prose title.
+  `ALTER TABLE triage_notifications ADD COLUMN action TEXT`,
+  `ALTER TABLE triage_notifications ADD COLUMN task_title TEXT`,
 ];
 
 function toStage(row: StageRow) {
@@ -337,10 +390,21 @@ function toTask(row: TaskRow) {
   };
 }
 
+/** Recover a short action phrase from a legacy "Triage #12 started" title. */
+function actionFromTitle(title: string, taskNumber: number | null): string {
+  if (taskNumber === null) return title;
+  const stripped = title.replace(new RegExp(`^Triage #${taskNumber}\\s+`), "");
+  if (stripped === title) return title;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+}
+
 function toNotification(row: NotificationRow) {
   return {
     id: row.id,
     taskNumber: row.task_number,
+    // Rows written before the split still carry the action inside the title.
+    action: row.action ?? actionFromTitle(row.title, row.task_number),
+    taskTitle: row.task_title,
     title: row.title,
     body: row.body,
     level: row.level,
@@ -371,6 +435,18 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 export default async function plugin(bb: BbPluginApi) {
   const db = bb.storage.database();
   bb.storage.migrate(db, migrations);
+
+  // Read by the frontend's thread-list slot. Declaring it here is what puts the
+  // switch on the plugin's page in Tools; the board itself never reads it.
+  bb.settings.define({
+    showInSidebar: {
+      type: "boolean",
+      label: "Show Triage in the sidebar",
+      description:
+        "List your Triage cards above the threads in BB's sidebar, ordered by what needs you first.",
+      default: false,
+    },
+  });
 
   const listStages = () =>
     (db
@@ -424,6 +500,8 @@ export default async function plugin(bb: BbPluginApi) {
 
   const publish = (notification?: {
     taskNumber: number | null;
+    action: string;
+    taskTitle: string | null;
     title: string;
     body: string;
     level: "info" | "success" | "attention";
@@ -437,21 +515,36 @@ export default async function plugin(bb: BbPluginApi) {
 
   const notify = (input: {
     taskNumber: number | null;
-    title: string;
+    /** Short phrase: what just happened. */
+    action: string;
+    /** Title of the card it happened to, so the list can name it. */
+    taskTitle: string | null;
     body: string;
     level: "info" | "success" | "attention";
   }) => {
+    const title = input.taskNumber === null
+      ? input.action
+      : `Triage #${input.taskNumber} · ${input.action}`;
     db.prepare(
-      "INSERT INTO triage_notifications (id, task_number, title, body, level, read_at, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)",
+      "INSERT INTO triage_notifications (id, task_number, action, task_title, title, body, level, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)",
     ).run(
       crypto.randomUUID(),
       input.taskNumber,
-      input.title,
+      input.action,
+      input.taskTitle,
+      title,
       input.body,
       input.level,
       Date.now(),
     );
-    publish(input);
+    publish({
+      taskNumber: input.taskNumber,
+      action: input.action,
+      taskTitle: input.taskTitle,
+      title,
+      body: input.body,
+      level: input.level,
+    });
   };
 
   const moveTask = (
@@ -472,8 +565,9 @@ export default async function plugin(bb: BbPluginApi) {
     if (shouldNotify) {
       notify({
         taskNumber: number,
-        title: `Triage #${number} moved to ${stage.name}`,
-        body: summary?.trim() || `The assigned agent moved “${task.title}”.`,
+        action: `Moved to ${stage.name}`,
+        taskTitle: task.title,
+        body: summary?.trim() || "The assigned agent moved this card.",
         level: stage.system_role === "attention" ? "attention" : "success",
       });
     } else {
@@ -556,8 +650,9 @@ export default async function plugin(bb: BbPluginApi) {
       addEvent(current.id, "scheduler", "agent dispatched");
       notify({
         taskNumber: number,
-        title: `Triage #${number} started`,
-        body: `“${current.title}” was assigned to ${current.provider_id}.`,
+        action: "Agent started",
+        taskTitle: current.title,
+        body: `Assigned to ${current.provider_id} · ${current.model}.`,
         level: "info",
       });
       return toTask(getTaskRow(number));
@@ -570,7 +665,8 @@ export default async function plugin(bb: BbPluginApi) {
       addEvent(current.id, "scheduler", "dispatch failed", message);
       notify({
         taskNumber: number,
-        title: `Triage #${number} needs attention`,
+        action: "Needs attention",
+        taskTitle: current.title,
         body: message,
         level: "attention",
       });
@@ -608,8 +704,58 @@ export default async function plugin(bb: BbPluginApi) {
     return { stages: listStages(), tasks: listTasks(), projects, machines, notifications, unreadCount };
   };
 
+  /**
+   * Provider and model catalogue for the edit dialog's agent picker. A host
+   * that cannot enumerate one provider should still offer the others, so each
+   * lookup fails on its own.
+   */
+  const agentOptions = async () => {
+    const providers = await bb.sdk.providers.list();
+    const models: {
+      id: string;
+      providerId: string;
+      model: string;
+      displayName: string;
+      description: string;
+      supportedReasoningEfforts: (typeof reasoningLevelSchema)["options"][number][];
+      defaultReasoningEffort: (typeof reasoningLevelSchema)["options"][number];
+    }[] = [];
+    for (const provider of providers) {
+      if (!provider.available) continue;
+      try {
+        const result = await bb.sdk.providers.models({ providerId: provider.id });
+        for (const model of result.models) {
+          models.push({
+            id: `${provider.id}:${model.id}`,
+            providerId: provider.id,
+            model: model.model,
+            displayName: model.displayName,
+            description: model.description,
+            supportedReasoningEfforts: model.supportedReasoningEfforts.map(
+              (effort) => effort.reasoningEffort,
+            ),
+            defaultReasoningEffort: model.defaultReasoningEffort,
+          });
+        }
+      } catch (error) {
+        bb.log.warn(
+          `Triage could not list models for ${provider.id}: ${errorMessage(error)}`,
+        );
+      }
+    }
+    return {
+      providers: providers.map((provider) => ({
+        id: provider.id,
+        name: provider.displayName,
+        available: provider.available,
+      })),
+      models,
+    };
+  };
+
   bb.rpc.register(rpcContract, {
     snapshot: () => snapshot(),
+    agentOptions: () => agentOptions(),
     async createTask(input) {
       getStageRow(input.stageId);
       const project = await bb.sdk.projects.get({ projectId: input.request.projectId });
@@ -667,7 +813,29 @@ export default async function plugin(bb: BbPluginApi) {
         throw new Error("A task cannot be rescheduled after its agent thread has started");
       }
 
+      const retargeting =
+        input.providerId !== undefined ||
+        input.model !== undefined ||
+        input.reasoningLevel !== undefined;
+      if (task.thread_id && retargeting) {
+        throw new Error("A task cannot change agent after its thread has started");
+      }
+
       const request = newThreadRequestSchema.parse(JSON.parse(task.request_json));
+      if (retargeting) {
+        request.providerId = input.providerId ?? request.providerId;
+        request.model = input.model ?? request.model;
+        request.reasoningLevel = input.reasoningLevel ?? request.reasoningLevel;
+        // The picked values are now the user's, not a client preference.
+        request.executionInputSources = {
+          ...request.executionInputSources,
+          ...(input.providerId !== undefined ? { providerId: "explicit" as const } : {}),
+          ...(input.model !== undefined ? { model: "explicit" as const } : {}),
+          ...(input.reasoningLevel !== undefined
+            ? { reasoningLevel: "explicit" as const }
+            : {}),
+        };
+      }
       if (!task.thread_id) {
         const visibleTextIndex = request.input.findIndex(
           (part) => part.type === "text" && part.visibility !== "agent-only",
@@ -695,6 +863,7 @@ export default async function plugin(bb: BbPluginApi) {
       db.prepare(
         `UPDATE triage_tasks
          SET title = ?, description = ?, stage_id = ?, request_json = ?,
+             provider_id = ?, model = ?,
              scheduled_at = ?, run_state = ?, updated_at = ?
          WHERE id = ?`,
       ).run(
@@ -702,6 +871,8 @@ export default async function plugin(bb: BbPluginApi) {
         input.description,
         input.stageId,
         JSON.stringify(request),
+        request.providerId,
+        request.model,
         input.scheduledAt,
         nextRunState,
         Date.now(),
@@ -805,8 +976,23 @@ export default async function plugin(bb: BbPluginApi) {
       publish();
       return { ok: true as const };
     },
-    markNotificationsRead() {
-      db.prepare("UPDATE triage_notifications SET read_at = ? WHERE read_at IS NULL").run(Date.now());
+    markNotificationsRead({ ids }) {
+      if (ids === null) {
+        db.prepare("UPDATE triage_notifications SET read_at = ? WHERE read_at IS NULL").run(
+          Date.now(),
+        );
+      } else if (ids.length > 0) {
+        const placeholders = ids.map(() => "?").join(", ");
+        db.prepare(
+          `UPDATE triage_notifications SET read_at = ? WHERE read_at IS NULL AND id IN (${placeholders})`,
+        ).run(Date.now(), ...ids);
+      }
+      publish();
+      return { ok: true as const };
+    },
+    deleteNotifications({ ids }) {
+      const placeholders = ids.map(() => "?").join(", ");
+      db.prepare(`DELETE FROM triage_notifications WHERE id IN (${placeholders})`).run(...ids);
       publish();
       return { ok: true as const };
     },
@@ -884,8 +1070,9 @@ export default async function plugin(bb: BbPluginApi) {
     if (stage.system_role === "active") {
       notify({
         taskNumber: task.number,
-        title: `Triage #${task.number} is waiting`,
-        body: `The agent working on “${task.title}” is idle. Open the thread to review its update.`,
+        action: "Waiting for you",
+        taskTitle: task.title,
+        body: "The agent finished its turn. Open the thread to review its update.",
         level: "info",
       });
     } else {
@@ -904,7 +1091,8 @@ export default async function plugin(bb: BbPluginApi) {
     addEvent(task.id, "bb", "agent failed", reason);
     notify({
       taskNumber: task.number,
-      title: `Triage #${task.number} needs attention`,
+      action: "Needs attention",
+      taskTitle: task.title,
       body: reason,
       level: "attention",
     });
@@ -918,7 +1106,8 @@ export default async function plugin(bb: BbPluginApi) {
     ).run(Date.now(), task.id);
     notify({
       taskNumber: task.number,
-      title: `Triage #${task.number} lost its thread`,
+      action: "Lost its thread",
+      taskTitle: task.title,
       body: "The linked BB thread was deleted. You can run the card again.",
       level: "attention",
     });
