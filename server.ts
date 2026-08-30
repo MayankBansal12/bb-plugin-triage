@@ -45,6 +45,7 @@ const taskSchema = z.object({
     "stopped",
   ]),
   attentionReason: z.string().nullable(),
+  settledAt: z.number().int().nullable(),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),
 });
@@ -183,6 +184,12 @@ export const rpcContract = defineRpcContract({
       .strict(),
     output: taskSchema,
   },
+  setTaskSettled: {
+    input: z
+      .object({ number: z.number().int().positive(), settled: z.boolean() })
+      .strict(),
+    output: taskSchema,
+  },
   agentOptions: {
     input: z.null(),
     output: agentOptionsSchema,
@@ -269,6 +276,7 @@ interface TaskRow {
   attention_reason: string | null;
   created_at: number;
   updated_at: number;
+  settled_at: number | null;
 }
 
 interface NotificationRow {
@@ -344,6 +352,8 @@ const migrations = [
   // to", so both are stored rather than parsed back out of the prose title.
   `ALTER TABLE triage_notifications ADD COLUMN action TEXT`,
   `ALTER TABLE triage_notifications ADD COLUMN task_title TEXT`,
+  // Settled is orthogonal to workflow stage: archive a resolved card without losing its column.
+  `ALTER TABLE triage_tasks ADD COLUMN settled_at INTEGER`,
 ];
 
 function toStage(row: StageRow) {
@@ -387,6 +397,7 @@ function toTask(row: TaskRow) {
     attentionReason: row.attention_reason,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    settledAt: row.settled_at,
   };
 }
 
@@ -803,6 +814,16 @@ export default async function plugin(bb: BbPluginApi) {
     },
     moveTask: ({ number, stageId, summary }) =>
       moveTask(number, stageId, "user", summary, false),
+    setTaskSettled({ number, settled }) {
+      const task = getTaskRow(number);
+      const now = Date.now();
+      db.prepare(
+        "UPDATE triage_tasks SET settled_at = ?, updated_at = ? WHERE id = ?",
+      ).run(settled ? now : null, now, task.id);
+      addEvent(task.id, "user", settled ? "marked settled" : "reopened");
+      publish();
+      return toTask(getTaskRow(number));
+    },
     async updateTask(input) {
       const task = getTaskRow(input.number);
       const stage = getStageRow(input.stageId);
@@ -1050,9 +1071,10 @@ export default async function plugin(bb: BbPluginApi) {
   bb.events.on("thread.active", ({ thread }) => {
     const task = getTaskByThread(thread.id);
     if (!task) return;
+    const active = getSystemStage("active");
     db.prepare(
-      "UPDATE triage_tasks SET run_state = 'working', attention_reason = NULL, updated_at = ? WHERE id = ?",
-    ).run(Date.now(), task.id);
+      "UPDATE triage_tasks SET stage_id = ?, run_state = 'working', attention_reason = NULL, settled_at = NULL, updated_at = ? WHERE id = ?",
+    ).run(active.id, Date.now(), task.id);
     addEvent(task.id, "bb", "agent active");
     publish();
   });

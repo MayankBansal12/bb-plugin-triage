@@ -48,6 +48,7 @@ export interface Task {
   threadId: string | null;
   runState: RunState;
   attentionReason: string | null;
+  settledAt: number | null;
   createdAt: number;
   updatedAt: number;
 }

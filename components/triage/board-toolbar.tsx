@@ -13,7 +13,7 @@ import type { MachineOption, ProjectOption, Stage } from "@/lib/triage-types";
 
 import { CreateTaskDialog } from "./create-task-dialog";
 
-export type TaskFilter = "all" | "live" | "pending" | "attention";
+export type TaskFilter = "all" | "live" | "pending" | "attention" | "settled";
 
 export interface BoardToolbarProps {
   projects: ProjectOption[];
@@ -59,6 +59,7 @@ function BoardToolbar({
     { value: "live", label: "Running", count: counts.live, hint: "An agent is working right now" },
     { value: "pending", label: "Pending", count: counts.pending, hint: "Queued or scheduled" },
     { value: "attention", label: "Needs you", count: counts.attention, hint: "Waiting on a person" },
+    { value: "settled", label: "Settled", count: counts.settled, hint: "Resolved cards kept for reference" },
   ];
 
   return (

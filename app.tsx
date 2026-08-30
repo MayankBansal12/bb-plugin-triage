@@ -67,13 +67,15 @@ function showNotification(payload: RealtimePayload["notification"]): void {
 function matchesFilter(task: Task, filter: TaskFilter): boolean {
   switch (filter) {
     case "live":
-      return isTaskRunning(task);
+      return task.settledAt === null && isTaskRunning(task);
     case "pending":
-      return isPending(task);
+      return task.settledAt === null && isPending(task);
     case "attention":
-      return needsAttention(task);
+      return task.settledAt === null && needsAttention(task);
+    case "settled":
+      return task.settledAt !== null;
     default:
-      return true;
+      return task.settledAt === null;
   }
 }
 
@@ -126,10 +128,11 @@ function TriageBoard() {
 
   const counts = useMemo(
     () => ({
-      all: scopedTasks.length,
-      live: scopedTasks.filter(isTaskRunning).length,
-      pending: scopedTasks.filter(isPending).length,
-      attention: scopedTasks.filter(needsAttention).length,
+      all: scopedTasks.filter((task) => task.settledAt === null).length,
+      live: scopedTasks.filter((task) => task.settledAt === null && isTaskRunning(task)).length,
+      pending: scopedTasks.filter((task) => task.settledAt === null && isPending(task)).length,
+      attention: scopedTasks.filter((task) => task.settledAt === null && needsAttention(task)).length,
+      settled: scopedTasks.filter((task) => task.settledAt !== null).length,
     }),
     [scopedTasks],
   );
@@ -266,6 +269,12 @@ function TriageBoard() {
                         void taskAction(
                           () => rpc.call("stopTask", { number: task.number }),
                           `Stopped Triage #${task.number}`,
+                        )
+                      }
+                      onSetSettled={(settled) =>
+                        void taskAction(
+                          () => rpc.call("setTaskSettled", { number: task.number, settled }),
+                          settled ? `Settled Triage #${task.number}` : `Reopened Triage #${task.number}`,
                         )
                       }
                       onDelete={() =>

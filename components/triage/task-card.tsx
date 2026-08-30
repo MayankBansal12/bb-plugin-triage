@@ -47,6 +47,7 @@ export interface TaskCardProps {
   onMove: (stageId: string) => void;
   onRun: () => void;
   onStop: () => void;
+  onSetSettled: (settled: boolean) => void;
   onDelete: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
@@ -65,6 +66,7 @@ function TaskCard({
   onMove,
   onRun,
   onStop,
+  onSetSettled,
   onDelete,
   onDragStart,
   onDragEnd,
@@ -99,6 +101,18 @@ function TaskCard({
             {task.title}
           </button>
           <div className="triage-card-actions">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label={task.settledAt ? `Reopen Triage #${task.number}` : `Mark Triage #${task.number} settled`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSetSettled(!task.settledAt);
+              }}
+            >
+              <Icon name={task.settledAt ? "ArchiveRestore" : "Check"} className="size-4" aria-hidden="true" />
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -130,6 +144,10 @@ function TaskCard({
                     Stop agent
                   </DropdownMenuItem>
                 ) : null}
+                <DropdownMenuItem onSelect={() => onSetSettled(!task.settledAt)}>
+                  <Icon name={task.settledAt ? "ArchiveRestore" : "Check"} aria-hidden="true" />
+                  {task.settledAt ? "Reopen" : "Mark settled"}
+                </DropdownMenuItem>
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
                     <Icon name="ArrowRight" aria-hidden="true" />
