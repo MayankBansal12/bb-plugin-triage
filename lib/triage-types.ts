@@ -1,3 +1,5 @@
+import type { NewThreadRequest } from "@bb/plugin-sdk/app";
+
 /** Shapes mirrored from the plugin server's RPC contract. */
 
 export type StageRole = "intake" | "active" | "attention" | "done";
@@ -44,6 +46,7 @@ export interface Task {
   providerId: string;
   model: string;
   reasoningLevel: ReasoningLevel;
+  request: NewThreadRequest | null;
   scheduledAt: number | null;
   threadId: string | null;
   runState: RunState;

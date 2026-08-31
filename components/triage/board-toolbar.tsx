@@ -11,7 +11,7 @@ import { Segmented, type SegmentedOption } from "@/components/ui/segmented";
 import type { TriageRpc } from "@/lib/triage-store";
 import type { MachineOption, ProjectOption, Stage } from "@/lib/triage-types";
 
-import { CreateTaskDialog } from "./create-task-dialog";
+import { TaskComposerDialog } from "./task-composer-dialog";
 
 export type TaskFilter = "all" | "live" | "unread" | "settled";
 
@@ -115,11 +115,12 @@ function BoardToolbar({
           options={filterOptions}
           onValueChange={onTaskFilterChange}
         />
-        <CreateTaskDialog
+        <TaskComposerDialog
+          mode="create"
           stages={stages}
           defaultProjectId={defaultProjectId}
           rpc={rpc}
-          onCreated={onCreated}
+          onSaved={onCreated}
         />
       </div>
     </div>

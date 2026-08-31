@@ -1,6 +1,5 @@
 import * as React from "react";
 import {
-  experimental_useSidebarThreadActions,
   useBbNavigate,
   useRealtime,
   useSettings,
@@ -48,7 +47,6 @@ function TriageSidebarSection({
 }: Omit<PluginThreadListProps, "Original" | "experimental_Original">) {
   const { snapshot, refresh } = useTriage();
   const navigate = useBbNavigate();
-  const threads = experimental_useSidebarThreadActions();
   const [collapsed, setCollapsed] = React.useState(sectionCollapsed);
 
   // The board's subscription only runs while the board is mounted, so the
@@ -75,11 +73,8 @@ function TriageSidebarSection({
   if (rows.length === 0) return null;
 
   const openTask = (task: Task) => {
-    if (task.threadId) threads.open(task.threadId);
-    else {
-      requestOpenTaskDetail(task.number);
-      navigate.toPluginPanel("triage");
-    }
+    requestOpenTaskDetail(task.number);
+    navigate.toPluginPanel("triage");
     onNavigate();
   };
 

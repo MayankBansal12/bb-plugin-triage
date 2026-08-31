@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from "react";
 import {
   definePluginApp,
   useBbContext,
-  useBbNavigate,
   useRealtime,
 } from "@bb/plugin-sdk/app";
 import { toast } from "sonner";
@@ -12,11 +11,10 @@ import { Icon } from "@/components/ui/icon";
 import { StatusDot } from "@/components/ui/status-dot";
 import { BoardSkeleton, ToolbarSkeleton } from "@/components/triage/board-skeleton";
 import { BoardToolbar, type TaskFilter } from "@/components/triage/board-toolbar";
-import { EditTaskDialog } from "@/components/triage/edit-task-dialog";
+import { TaskComposerDialog } from "@/components/triage/task-composer-dialog";
 import { TriageHeaderActions } from "@/components/triage/header-actions";
 import { SidebarThreadList } from "@/components/triage/sidebar-thread-list";
 import { TaskCard } from "@/components/triage/task-card";
-import { TaskDetailDialog } from "@/components/triage/task-detail-dialog";
 import {
   isTaskRunning,
   stageTone,
@@ -78,14 +76,11 @@ function matchesFilter(task: Task, filter: TaskFilter): boolean {
 function TriageBoard() {
   const { snapshot, error, loading, rpc, refresh } = useTriage();
   const { projectId: routeProjectId } = useBbContext();
-  const navigate = useBbNavigate();
-
   const [projectFilter, setProjectFilter] = useState("all");
   const [machineFilter, setMachineFilter] = useState("all");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
   const [draggedNumber, setDraggedNumber] = useState<number | null>(null);
   const [dropStageId, setDropStageId] = useState<string | null>(null);
-  const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [editingNumber, setEditingNumber] = useState<number | null>(null);
 
   useRealtime("triage", (payload) => {
@@ -102,16 +97,15 @@ function TriageBoard() {
         patchTaskRead(task.number, true);
         void rpc.call("setTaskRead", { number: task.number, read: true }).then(refresh, refresh);
       }
-      if (task.threadId) navigate.toThread(task.threadId);
-      else setSelectedNumber(task.number);
+      setEditingNumber(task.number);
     },
-    [navigate, refresh, rpc, snapshot],
+    [refresh, rpc, snapshot],
   );
 
   useOpenTaskRequests(openTask);
-  // A sidebar row for a card with no thread asks for the dialog by number: the
-  // request can land before the snapshot does, and the dialog opens with it.
-  usePendingOpenTaskDetail(setSelectedNumber);
+  // Sidebar and notification rows ask for the editor by number. The request
+  // can land before the snapshot does, and opens once the card is available.
+  usePendingOpenTaskDetail(setEditingNumber);
 
   /** Cards inside the current project and machine scope, before the lens. */
   const scopedTasks = useMemo(() => {
@@ -189,7 +183,6 @@ function TriageBoard() {
     );
   }
 
-  const selectedTask = snapshot.tasks.find((task) => task.number === selectedNumber) ?? null;
   const editingTask = snapshot.tasks.find((task) => task.number === editingNumber) ?? null;
   const defaultProjectId = projectFilter !== "all" ? projectFilter : routeProjectId;
 
@@ -253,10 +246,6 @@ function TriageBoard() {
                       stages={snapshot.stages}
                       showMachine={snapshot.machines.length > 1}
                       onOpen={() => openTask(task.number)}
-                      onEdit={() => {
-                        setSelectedNumber(null);
-                        setEditingNumber(task.number);
-                      }}
                       onMove={(stageId) => void move(task, stageId)}
                       onRun={() =>
                         void taskAction(
@@ -276,6 +265,10 @@ function TriageBoard() {
                           settled ? `Settled Triage #${task.number}` : `Reopened Triage #${task.number}`,
                         )
                       }
+                      onSetRead={(read) => {
+                        patchTaskRead(task.number, read);
+                        void rpc.call("setTaskRead", { number: task.number, read }).then(refresh, refresh);
+                      }}
                       onDelete={() =>
                         void taskAction(
                           () => rpc.call("deleteTask", { number: task.number }),
@@ -305,21 +298,8 @@ function TriageBoard() {
         </div>
       </div>
 
-      <TaskDetailDialog
-        task={selectedTask}
-        stages={snapshot.stages}
-        rpc={rpc}
-        open={selectedTask !== null}
-        onOpenChange={(next) => {
-          if (!next) setSelectedNumber(null);
-        }}
-        onEdit={() => {
-          setSelectedNumber(null);
-          if (selectedTask) setEditingNumber(selectedTask.number);
-        }}
-        onChanged={refresh}
-      />
-      <EditTaskDialog
+      <TaskComposerDialog
+        mode="edit"
         task={editingTask}
         stages={snapshot.stages}
         rpc={rpc}
@@ -327,7 +307,7 @@ function TriageBoard() {
         onOpenChange={(next) => {
           if (!next) setEditingNumber(null);
         }}
-        onChanged={refresh}
+        onSaved={refresh}
       />
     </div>
   );

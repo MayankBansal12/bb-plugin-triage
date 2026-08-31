@@ -43,7 +43,6 @@ export interface TaskCardProps {
   /** True when the board shows more than one machine's work. */
   showMachine: boolean;
   onOpen: () => void;
-  onEdit: () => void;
   onMove: (stageId: string) => void;
   onRun: () => void;
   onStop: () => void;
@@ -63,7 +62,6 @@ function TaskCard({
   stages,
   showMachine,
   onOpen,
-  onEdit,
   onMove,
   onRun,
   onStop,
@@ -133,8 +131,8 @@ function TaskCard({
                   Triage #{task.number}
                 </DropdownMenuLabel>
                 <DropdownMenuItem onSelect={onOpen}>
-                  <Icon name={task.threadId ? "MessageSquare" : "Eye"} aria-hidden="true" />
-                  {task.threadId ? "Open thread" : "Open details"}
+                  <Icon name="Edit" aria-hidden="true" />
+                  Edit task
                 </DropdownMenuItem>
                 {!task.threadId ? (
                   <DropdownMenuItem onSelect={onRun}>
@@ -172,10 +170,6 @@ function TaskCard({
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onEdit}>
-                  <Icon name="Edit" aria-hidden="true" />
-                  Edit
-                </DropdownMenuItem>
                 <DropdownMenuItem
                   variant="destructive"
                   onSelect={() => {

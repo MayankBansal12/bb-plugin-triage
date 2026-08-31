@@ -8,6 +8,40 @@ const stageSchema = z.object({
   systemRole: z.enum(["intake", "active", "attention", "done"]).nullable(),
 });
 
+const reasoningLevelSchema = z.enum([
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "ultracode",
+  "max",
+  "ultra",
+]);
+
+const executionSourceSchema = z.enum(["explicit", "client-preference"]);
+export const newThreadRequestSchema = z
+  .object({
+    projectId: z.string().min(1),
+    providerId: z.string().min(1),
+    model: z.string().min(1),
+    reasoningLevel: reasoningLevelSchema,
+    permissionMode: z.enum(["accept-edits", "auto", "full"]),
+    serviceTier: z.enum(["default", "fast"]).optional(),
+    executionInputSources: z
+      .object({
+        providerId: executionSourceSchema.optional(),
+        model: executionSourceSchema.optional(),
+        serviceTier: executionSourceSchema.optional(),
+        reasoningLevel: executionSourceSchema.optional(),
+        permissionMode: executionSourceSchema.optional(),
+      })
+      .strict(),
+    environment: z.object({ type: z.string().min(1) }).passthrough(),
+    input: z.array(z.object({ type: z.string().min(1) }).passthrough()).min(1),
+  })
+  .strict();
+
 const taskSchema = z.object({
   id: z.string(),
   number: z.number().int().positive(),
@@ -21,16 +55,8 @@ const taskSchema = z.object({
   branchName: z.string(),
   providerId: z.string(),
   model: z.string(),
-  reasoningLevel: z.enum([
-    "none",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "ultracode",
-    "max",
-    "ultra",
-  ]),
+  reasoningLevel: reasoningLevelSchema,
+  request: newThreadRequestSchema.nullable(),
   scheduledAt: z.number().int().nullable(),
   threadId: z.string().nullable(),
   runState: z.enum([
@@ -74,17 +100,6 @@ const machineOptionSchema = z.object({
   status: z.enum(["connected", "disconnected"]),
 });
 
-const reasoningLevelSchema = z.enum([
-  "none",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "ultracode",
-  "max",
-  "ultra",
-]);
-
 const agentOptionsSchema = z.object({
   providers: z.array(
     z.object({ id: z.string(), name: z.string(), available: z.boolean() }),
@@ -101,38 +116,6 @@ const agentOptionsSchema = z.object({
     }),
   ),
 });
-
-const executionSourceSchema = z.enum(["explicit", "client-preference"]);
-export const newThreadRequestSchema = z
-  .object({
-    projectId: z.string().min(1),
-    providerId: z.string().min(1),
-    model: z.string().min(1),
-    reasoningLevel: z.enum([
-      "none",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "ultracode",
-      "max",
-      "ultra",
-    ]),
-    permissionMode: z.enum(["accept-edits", "auto", "full"]),
-    serviceTier: z.enum(["default", "fast"]).optional(),
-    executionInputSources: z
-      .object({
-        providerId: executionSourceSchema.optional(),
-        model: executionSourceSchema.optional(),
-        serviceTier: executionSourceSchema.optional(),
-        reasoningLevel: executionSourceSchema.optional(),
-        permissionMode: executionSourceSchema.optional(),
-      })
-      .strict(),
-    environment: z.object({ type: z.string().min(1) }).passthrough(),
-    input: z.array(z.object({ type: z.string().min(1) }).passthrough()).min(1),
-  })
-  .strict();
 
 export const rpcContract = defineRpcContract({
   snapshot: {
@@ -181,6 +164,8 @@ export const rpcContract = defineRpcContract({
         providerId: z.string().min(1).optional(),
         model: z.string().min(1).optional(),
         reasoningLevel: reasoningLevelSchema.optional(),
+        /** Full composer state; accepted only before a thread exists. */
+        request: newThreadRequestSchema.optional(),
       })
       .strict(),
     output: taskSchema,
@@ -398,6 +383,7 @@ function toTask(row: TaskRow) {
     providerId: row.provider_id,
     model: row.model,
     reasoningLevel: storedRequest.success ? storedRequest.data.reasoningLevel : "none" as const,
+    request: storedRequest.success ? storedRequest.data : null,
     scheduledAt: row.scheduled_at,
     threadId: row.thread_id,
     runState: row.run_state,
@@ -858,37 +844,51 @@ export default async function plugin(bb: BbPluginApi) {
         throw new Error("A task cannot change agent after its thread has started");
       }
 
-      const request = newThreadRequestSchema.parse(JSON.parse(task.request_json));
-      if (retargeting) {
-        request.providerId = input.providerId ?? request.providerId;
-        request.model = input.model ?? request.model;
-        request.reasoningLevel = input.reasoningLevel ?? request.reasoningLevel;
-        // The picked values are now the user's, not a client preference.
-        request.executionInputSources = {
-          ...request.executionInputSources,
-          ...(input.providerId !== undefined ? { providerId: "explicit" as const } : {}),
-          ...(input.model !== undefined ? { model: "explicit" as const } : {}),
-          ...(input.reasoningLevel !== undefined
-            ? { reasoningLevel: "explicit" as const }
-            : {}),
-        };
-      }
-      if (!task.thread_id) {
-        const visibleTextIndex = request.input.findIndex(
-          (part) => part.type === "text" && part.visibility !== "agent-only",
-        );
-        const visibleText = {
-          type: "text" as const,
-          text: input.description,
-          mentions: [],
-        };
-        const remaining = request.input.filter(
-          (part) => part.type !== "text" || part.visibility === "agent-only",
-        );
-        remaining.splice(Math.max(0, visibleTextIndex), 0, visibleText);
-        request.input = remaining;
-      }
+      let request = newThreadRequestSchema.parse(JSON.parse(task.request_json));
+      let projectId = task.project_id;
+      let projectName = task.project_name;
+      let machineId = task.machine_id;
+      let machineName = task.machine_name;
 
+      if (!task.thread_id && input.request) {
+        request = input.request;
+        const project = await bb.sdk.projects.get({ projectId: request.projectId });
+        const machine = await resolveMachine(request.environment);
+        projectId = request.projectId;
+        projectName = project.name;
+        machineId = machine.machineId;
+        machineName = machine.machineName;
+      } else {
+        if (retargeting) {
+          request.providerId = input.providerId ?? request.providerId;
+          request.model = input.model ?? request.model;
+          request.reasoningLevel = input.reasoningLevel ?? request.reasoningLevel;
+          // The picked values are now the user's, not a client preference.
+          request.executionInputSources = {
+            ...request.executionInputSources,
+            ...(input.providerId !== undefined ? { providerId: "explicit" as const } : {}),
+            ...(input.model !== undefined ? { model: "explicit" as const } : {}),
+            ...(input.reasoningLevel !== undefined
+              ? { reasoningLevel: "explicit" as const }
+              : {}),
+          };
+        }
+        if (!task.thread_id) {
+          const visibleTextIndex = request.input.findIndex(
+            (part) => part.type === "text" && part.visibility !== "agent-only",
+          );
+          const visibleText = {
+            type: "text" as const,
+            text: input.description,
+            mentions: [],
+          };
+          const remaining = request.input.filter(
+            (part) => part.type !== "text" || part.visibility === "agent-only",
+          );
+          remaining.splice(Math.max(0, visibleTextIndex), 0, visibleText);
+          request.input = remaining;
+        }
+      }
       const editableRunState = task.thread_id
         ? task.run_state
         : input.scheduledAt === null
@@ -900,6 +900,7 @@ export default async function plugin(bb: BbPluginApi) {
       db.prepare(
         `UPDATE triage_tasks
          SET title = ?, description = ?, stage_id = ?, request_json = ?,
+             project_id = ?, project_name = ?, machine_id = ?, machine_name = ?,
              provider_id = ?, model = ?,
              scheduled_at = ?, run_state = ?, updated_at = ?
          WHERE id = ?`,
@@ -908,6 +909,10 @@ export default async function plugin(bb: BbPluginApi) {
         input.description,
         input.stageId,
         JSON.stringify(request),
+        projectId,
+        projectName,
+        machineId,
+        machineName,
         request.providerId,
         request.model,
         input.scheduledAt,
