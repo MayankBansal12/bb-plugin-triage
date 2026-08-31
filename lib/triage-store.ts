@@ -85,6 +85,13 @@ export function patchTaskStage(taskNumber: number, stageId: string): void {
   });
 }
 
+export function patchTaskRead(taskNumber: number, read: boolean): void {
+  if (!state.snapshot) return;
+  setState({ ...state, snapshot: { ...state.snapshot, tasks: state.snapshot.tasks.map((task) =>
+    task.number === taskNumber ? { ...task, readAt: read ? Date.now() : null } : task,
+  ) } });
+}
+
 export interface TriageData extends TriageState {
   rpc: TriageRpc;
   refresh: () => Promise<void>;

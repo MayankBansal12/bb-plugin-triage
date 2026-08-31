@@ -45,6 +45,7 @@ const taskSchema = z.object({
     "stopped",
   ]),
   attentionReason: z.string().nullable(),
+  readAt: z.number().int().nullable(),
   settledAt: z.number().int().nullable(),
   createdAt: z.number().int(),
   updatedAt: z.number().int(),
@@ -190,6 +191,10 @@ export const rpcContract = defineRpcContract({
       .strict(),
     output: taskSchema,
   },
+  setTaskRead: {
+    input: z.object({ number: z.number().int().positive(), read: z.boolean() }).strict(),
+    output: taskSchema,
+  },
   agentOptions: {
     input: z.null(),
     output: agentOptionsSchema,
@@ -274,6 +279,7 @@ interface TaskRow {
     | "completed"
     | "stopped";
   attention_reason: string | null;
+  read_at: number | null;
   created_at: number;
   updated_at: number;
   settled_at: number | null;
@@ -354,6 +360,7 @@ const migrations = [
   `ALTER TABLE triage_notifications ADD COLUMN task_title TEXT`,
   // Settled is orthogonal to workflow stage: archive a resolved card without losing its column.
   `ALTER TABLE triage_tasks ADD COLUMN settled_at INTEGER`,
+  `ALTER TABLE triage_tasks ADD COLUMN read_at INTEGER`,
 ];
 
 function toStage(row: StageRow) {
@@ -395,6 +402,7 @@ function toTask(row: TaskRow) {
     threadId: row.thread_id,
     runState: row.run_state,
     attentionReason: row.attention_reason,
+    readAt: row.read_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     settledAt: row.settled_at,
@@ -570,8 +578,10 @@ export default async function plugin(bb: BbPluginApi) {
     const now = Date.now();
     const nextRunState = stage.system_role === "done" ? "completed" : task.run_state;
     db.prepare(
-      "UPDATE triage_tasks SET stage_id = ?, run_state = ?, attention_reason = CASE WHEN ? = 'attention' THEN attention_reason ELSE NULL END, updated_at = ? WHERE id = ?",
-    ).run(stage.id, nextRunState, stage.system_role, now, task.id);
+      `UPDATE triage_tasks SET stage_id = ?, run_state = ?,
+       attention_reason = CASE WHEN ? = 'attention' THEN attention_reason ELSE NULL END,
+       read_at = CASE WHEN ? = 'agent' THEN NULL ELSE read_at END, updated_at = ? WHERE id = ?`,
+    ).run(stage.id, nextRunState, stage.system_role, actor, now, task.id);
     addEvent(task.id, actor, `moved to ${stage.name}`, summary);
     if (shouldNotify) {
       notify({
@@ -671,7 +681,7 @@ export default async function plugin(bb: BbPluginApi) {
       const message = errorMessage(error);
       const attention = getSystemStage("attention");
       db.prepare(
-        "UPDATE triage_tasks SET stage_id = ?, run_state = 'failed', attention_reason = ?, updated_at = ? WHERE id = ?",
+        "UPDATE triage_tasks SET stage_id = ?, run_state = 'failed', attention_reason = ?, read_at = NULL, updated_at = ? WHERE id = ?",
       ).run(attention.id, message, Date.now(), current.id);
       addEvent(current.id, "scheduler", "dispatch failed", message);
       notify({
@@ -821,6 +831,12 @@ export default async function plugin(bb: BbPluginApi) {
         "UPDATE triage_tasks SET settled_at = ?, updated_at = ? WHERE id = ?",
       ).run(settled ? now : null, now, task.id);
       addEvent(task.id, "user", settled ? "marked settled" : "reopened");
+      publish();
+      return toTask(getTaskRow(number));
+    },
+    setTaskRead({ number, read }) {
+      const task = getTaskRow(number);
+      db.prepare("UPDATE triage_tasks SET read_at = ? WHERE id = ?").run(read ? Date.now() : null, task.id);
       publish();
       return toTask(getTaskRow(number));
     },
@@ -1086,7 +1102,7 @@ export default async function plugin(bb: BbPluginApi) {
       publish();
       return;
     }
-    db.prepare("UPDATE triage_tasks SET run_state = 'idle', updated_at = ? WHERE id = ?").run(
+    db.prepare("UPDATE triage_tasks SET run_state = 'idle', read_at = NULL, updated_at = ? WHERE id = ?").run(
       Date.now(),
       task.id,
     );

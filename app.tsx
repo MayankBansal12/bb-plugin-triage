@@ -19,12 +19,10 @@ import { TaskCard } from "@/components/triage/task-card";
 import { TaskDetailDialog } from "@/components/triage/task-detail-dialog";
 import {
   isTaskRunning,
-  needsAttention,
-  isPending,
   stageTone,
 } from "@/lib/triage-format";
 import { claimTriageRefresh, usePendingOpenTaskDetail } from "@/lib/triage-mounts";
-import { patchTaskStage, useOpenTaskRequests, useTriage } from "@/lib/triage-store";
+import { patchTaskRead, patchTaskStage, useOpenTaskRequests, useTriage } from "@/lib/triage-store";
 import type { NotificationLevel, Task } from "@/lib/triage-types";
 import "./app.css";
 
@@ -68,10 +66,8 @@ function matchesFilter(task: Task, filter: TaskFilter): boolean {
   switch (filter) {
     case "live":
       return task.settledAt === null && isTaskRunning(task);
-    case "pending":
-      return task.settledAt === null && isPending(task);
-    case "attention":
-      return task.settledAt === null && needsAttention(task);
+    case "unread":
+      return task.settledAt === null && task.readAt === null;
     case "settled":
       return task.settledAt !== null;
     default:
@@ -102,10 +98,14 @@ function TriageBoard() {
     (taskNumber: number) => {
       const task = snapshot?.tasks.find((item) => item.number === taskNumber);
       if (!task) return;
+      if (task.readAt === null) {
+        patchTaskRead(task.number, true);
+        void rpc.call("setTaskRead", { number: task.number, read: true }).then(refresh, refresh);
+      }
       if (task.threadId) navigate.toThread(task.threadId);
       else setSelectedNumber(task.number);
     },
-    [navigate, snapshot],
+    [navigate, refresh, rpc, snapshot],
   );
 
   useOpenTaskRequests(openTask);
@@ -130,8 +130,7 @@ function TriageBoard() {
     () => ({
       all: scopedTasks.filter((task) => task.settledAt === null).length,
       live: scopedTasks.filter((task) => task.settledAt === null && isTaskRunning(task)).length,
-      pending: scopedTasks.filter((task) => task.settledAt === null && isPending(task)).length,
-      attention: scopedTasks.filter((task) => task.settledAt === null && needsAttention(task)).length,
+      unread: scopedTasks.filter((task) => task.settledAt === null && task.readAt === null).length,
       settled: scopedTasks.filter((task) => task.settledAt !== null).length,
     }),
     [scopedTasks],

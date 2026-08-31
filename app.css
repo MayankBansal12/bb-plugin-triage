@@ -208,10 +208,15 @@
   background: var(--card);
   padding: 11px 12px 12px;
   transition:
+    opacity 150ms ease,
     border-color 150ms ease,
     box-shadow 150ms ease,
     transform 150ms var(--triage-ease-out);
 }
+
+.triage-card[data-read] { opacity: 0.58; }
+.triage-card[data-unread] { border-color: color-mix(in oklch, var(--primary) 28%, var(--triage-line)); }
+.triage-card[data-unread] .triage-card-title { font-weight: 650; }
 
 .triage-card[data-tone="danger"] {
   border-color: color-mix(in oklch, var(--destructive) 26%, transparent);

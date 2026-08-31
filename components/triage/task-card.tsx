@@ -48,6 +48,7 @@ export interface TaskCardProps {
   onRun: () => void;
   onStop: () => void;
   onSetSettled: (settled: boolean) => void;
+  onSetRead: (read: boolean) => void;
   onDelete: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
@@ -67,6 +68,7 @@ function TaskCard({
   onRun,
   onStop,
   onSetSettled,
+  onSetRead,
   onDelete,
   onDragStart,
   onDragEnd,
@@ -82,6 +84,8 @@ function TaskCard({
       <Card
         className="triage-card group"
         data-tone={status.tone}
+        data-unread={task.readAt === null ? "" : undefined}
+        data-read={task.readAt !== null ? "" : undefined}
         draggable
         onDragStart={(event) => {
           event.dataTransfer.effectAllowed = "move";
@@ -144,6 +148,10 @@ function TaskCard({
                     Stop agent
                   </DropdownMenuItem>
                 ) : null}
+                <DropdownMenuItem onSelect={() => onSetRead(task.readAt === null)}>
+                  <Icon name={task.readAt === null ? "Eye" : "MailOpen"} aria-hidden="true" />
+                  {task.readAt === null ? "Mark read" : "Mark unread"}
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => onSetSettled(!task.settledAt)}>
                   <Icon name={task.settledAt ? "ArchiveRestore" : "Check"} aria-hidden="true" />
                   {task.settledAt ? "Reopen" : "Mark settled"}
