@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   definePluginApp,
   useBbContext,
+  useBbNavigate,
   useRealtime,
 } from "@bb/plugin-sdk/app";
 import { toast } from "sonner";
@@ -76,6 +77,7 @@ function matchesFilter(task: Task, filter: TaskFilter): boolean {
 function TriageBoard() {
   const { snapshot, error, loading, rpc, refresh } = useTriage();
   const { projectId: routeProjectId } = useBbContext();
+  const navigate = useBbNavigate();
   const [projectFilter, setProjectFilter] = useState("all");
   const [machineFilter, setMachineFilter] = useState("all");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
@@ -97,14 +99,15 @@ function TriageBoard() {
         patchTaskRead(task.number, true);
         void rpc.call("setTaskRead", { number: task.number, read: true }).then(refresh, refresh);
       }
-      setEditingNumber(task.number);
+      if (task.threadId) navigate.toThread(task.threadId);
+      else setEditingNumber(task.number);
     },
-    [refresh, rpc, snapshot],
+    [navigate, refresh, rpc, snapshot],
   );
 
   useOpenTaskRequests(openTask);
-  // Sidebar and notification rows ask for the editor by number. The request
-  // can land before the snapshot does, and opens once the card is available.
+  // Notification rows ask to open a card by number. Existing threads win;
+  // cards without one fall back to the shared editor.
   usePendingOpenTaskDetail(setEditingNumber);
 
   /** Cards inside the current project and machine scope, before the lens. */

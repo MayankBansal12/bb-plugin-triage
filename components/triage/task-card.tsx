@@ -131,8 +131,8 @@ function TaskCard({
                   Triage #{task.number}
                 </DropdownMenuLabel>
                 <DropdownMenuItem onSelect={onOpen}>
-                  <Icon name="Edit" aria-hidden="true" />
-                  Edit task
+                  <Icon name={task.threadId ? "MessageSquare" : "Edit"} aria-hidden="true" />
+                  {task.threadId ? "Open thread" : "Edit task"}
                 </DropdownMenuItem>
                 {!task.threadId ? (
                   <DropdownMenuItem onSelect={onRun}>
