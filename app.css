@@ -1092,18 +1092,87 @@
 }
 
 .triage-schedule-time {
-  display: flex;
-  align-items: center;
+  display: grid;
   gap: 8px;
   margin-top: 8px;
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
 
+.triage-schedule-time-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.triage-schedule-time-label span:last-child {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.bb-time-picker {
+  display: grid;
+  grid-template-columns: 52px 8px 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+}
+
+.bb-time-picker-field {
+  height: 32px;
+  min-width: 0;
+  padding-inline: 5px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+}
+
+.bb-time-picker-field::-webkit-inner-spin-button,
+.bb-time-picker-field::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.bb-time-picker-separator {
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.bb-time-picker-period {
+  width: 100%;
+}
+
+.bb-time-picker-period .bb-segmented-item {
+  flex: 1;
+  padding-inline: 6px;
+}
+
+.bb-time-picker[data-invalid] .bb-time-picker-field {
+  border-color: var(--destructive);
+}
+
 .triage-schedule-presets {
   display: flex;
   gap: 6px;
   margin-top: 8px;
+}
+
+.triage-schedule-actions {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.triage-schedule-actions > span {
+  min-width: 0;
 }
 
 /* ---------------------------------------------------------------------------

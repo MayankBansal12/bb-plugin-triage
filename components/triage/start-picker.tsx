@@ -3,21 +3,21 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Icon } from "@/components/ui/icon";
-import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Segmented } from "@/components/ui/segmented";
+import { TimePicker } from "@/components/ui/time-picker";
 import { localDateAt, nextScheduleTime, toDatetimeLocal } from "@/lib/triage-format";
 
 export type StartMode = "now" | "later" | "manual";
 
 const MODE_OPTIONS = [
-  { value: "now" as const, label: "Run now", icon: "Clock" as const },
-  { value: "later" as const, label: "Later", icon: "Calendar" as const },
-  { value: "manual" as const, label: "On board", icon: "Pause" as const },
+  { value: "now" as const, label: "Run now" },
+  { value: "later" as const, label: "Schedule" },
+  { value: "manual" as const, label: "On board" },
 ];
 
 function formatLocalScheduled(value: string): string {
@@ -35,7 +35,9 @@ export function formatStartDistance(mode: StartMode, scheduledLocal: string): st
   if (mode === "manual") return "Stays on the board until you run it";
   const timestamp = new Date(scheduledLocal).getTime();
   if (!Number.isFinite(timestamp)) return "Choose a date and time";
-  const minutes = Math.max(1, Math.round((timestamp - Date.now()) / 60_000));
+  const delta = timestamp - Date.now();
+  if (delta <= 0) return "Choose a future time";
+  const minutes = Math.max(1, Math.round(delta / 60_000));
   if (minutes < 120) return `Starts in ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
   const hours = Math.round(minutes / 60);
   if (hours < 48) return `Starts in ${hours} ${hours === 1 ? "hour" : "hours"}`;
@@ -64,6 +66,11 @@ function StartPicker({
   const scheduledTime = scheduledDate
     ? `${String(scheduledDate.getHours()).padStart(2, "0")}:${String(scheduledDate.getMinutes()).padStart(2, "0")}`
     : "09:00";
+  const scheduleInvalid =
+    mode === "later" &&
+    (!scheduledDate ||
+      !Number.isFinite(scheduledDate.getTime()) ||
+      scheduledDate.getTime() <= Date.now());
 
   const selectMode = (nextMode: StartMode) => {
     onModeChange(nextMode);
@@ -97,6 +104,7 @@ function StartPicker({
             disabled={disabled}
             className="h-9 w-full justify-start gap-2 px-3 font-normal"
             aria-label="Choose when this task starts"
+            aria-expanded={open}
           >
             <Icon
               name={mode === "manual" ? "Pause" : mode === "later" ? "Calendar" : "Clock"}
@@ -110,12 +118,17 @@ function StartPicker({
             ) : (
               <span className="truncate">{formatLocalScheduled(scheduledLocal)}</span>
             )}
+            <Icon
+              name="ChevronDown"
+              className="ml-auto size-3.5 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
           </Button>
         </PopoverTrigger>
         <PopoverContent
           align="end"
           sideOffset={8}
-          className="triage-schedule-popover w-[360px] p-3"
+          className="triage-schedule-popover w-[340px] p-3"
           mobileTitle="Choose a start time"
         >
           <Segmented
@@ -147,38 +160,64 @@ function StartPicker({
                 }}
               />
               <div className="triage-schedule-time">
-                <Icon name="Clock" className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <Input
-                  type="time"
+                <div className="triage-schedule-time-label">
+                  <span>Time</span>
+                  <span>Local time</span>
+                </div>
+                <TimePicker
                   value={scheduledTime}
-                  onChange={(event) => selectScheduledTime(event.target.value)}
+                  onValueChange={selectScheduledTime}
                   aria-label="Scheduled time"
-                  className="h-9"
+                  invalid={scheduleInvalid}
                 />
               </div>
               <div className="triage-schedule-presets">
                 {[
-                  { label: "+1 hour", at: Date.now() + 3_600_000 },
+                  { label: "In 1 hour", at: Date.now() + 3_600_000 },
                   { label: "Tonight", at: localDateAt(20, 0, 0) },
-                  { label: "Tomorrow", at: localDateAt(9, 0, 1) },
+                  { label: "Tomorrow 9:00", at: localDateAt(9, 0, 1) },
                 ].map((preset) => (
                   <Button
                     key={preset.label}
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-8 flex-1 px-2 text-xs"
+                    className="h-8 flex-1 px-2 text-[11px]"
                     onClick={() => onScheduledLocalChange(toDatetimeLocal(preset.at))}
                   >
                     {preset.label}
                   </Button>
                 ))}
               </div>
+              <div className="triage-schedule-actions">
+                <span
+                  className={
+                    scheduleInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground"
+                  }
+                  role={scheduleInvalid ? "alert" : undefined}
+                >
+                  {formatStartDistance(mode, scheduledLocal)}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={scheduleInvalid}
+                  onClick={() => setOpen(false)}
+                >
+                  Done
+                </Button>
+              </div>
             </div>
           ) : null}
         </PopoverContent>
       </Popover>
-      <span className="text-xs font-normal text-muted-foreground">
+      <span
+        className={
+          scheduleInvalid
+            ? "text-xs font-normal text-destructive"
+            : "text-xs font-normal text-muted-foreground"
+        }
+      >
         {formatStartDistance(mode, scheduledLocal)}
       </span>
     </div>
