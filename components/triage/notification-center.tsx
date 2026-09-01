@@ -8,7 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
+import { StatusDot } from "@/components/ui/status-dot";
 import {
   formatShortWhen,
   isPending,
@@ -16,191 +16,24 @@ import {
   needsAttention,
   presentRunState,
 } from "@/lib/triage-format";
-import type {
-  NotificationLevel,
-  Task,
-  TriageNotification,
-} from "@/lib/triage-types";
-
-const LEVEL_TONE: Record<NotificationLevel, StatusTone> = {
-  attention: "danger",
-  success: "done",
-  info: "unread",
-};
-
-/** How many history rows survive the fold; past this the feed is archaeology. */
-const FEED_LIMIT = 40;
+import {
+  FEED_LIMIT,
+  LENS_ORDER,
+  LENSES,
+  LEVEL_TONE,
+  buildAttention,
+  foldRuns,
+  groupByDay,
+  toCardRow,
+  unreadIds,
+  type CardRow,
+  type FeedRow,
+  type LensId,
+} from "@/lib/notification-feed";
+import type { Task, TriageNotification } from "@/lib/triage-types";
 
 /** Long enough to glance, short enough that the badge clears while open. */
 const GLANCE_READ_DELAY_MS = 800;
-
-type LensId = "attention" | "live" | "scheduled";
-
-interface Lens {
-  label: string;
-  tone: StatusTone;
-  hint: string;
-  match: (task: Task) => boolean;
-}
-
-/** Vocabulary is the board toolbar's, so the two filters mean the same thing. */
-const LENSES: Record<LensId, Lens> = {
-  attention: {
-    label: "Needs you",
-    tone: "danger",
-    hint: "Cards waiting on a person",
-    match: needsAttention,
-  },
-  live: {
-    label: "Running",
-    tone: "ongoing",
-    hint: "An agent is working right now",
-    match: isTaskRunning,
-  },
-  scheduled: {
-    label: "Pending",
-    tone: "scheduled",
-    hint: "Queued or scheduled",
-    match: isPending,
-  },
-};
-
-const LENS_ORDER: readonly LensId[] = ["attention", "live", "scheduled"];
-
-/** A live card, which is what the top of the panel is actually about. */
-interface CardRow {
-  task: Task;
-  unread: boolean;
-  /** Attention events folded into this card. */
-  events: number;
-  /** Persisted notification rows represented by this live status card. */
-  notificationIds: string[];
-  reason: string | null;
-  stamp: number;
-}
-
-/** A run of history collapsed to the one thing it says. */
-interface FeedRow {
-  id: string;
-  notificationIds: string[];
-  taskNumber: number | null;
-  taskTitle: string | null;
-  action: string;
-  level: NotificationLevel;
-  body: string;
-  count: number;
-  createdAt: number;
-  unread: boolean;
-}
-
-/** Today / Yesterday / date, so a long list stays scannable. */
-function bucketOf(timestamp: number): string {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  if (timestamp >= start.getTime()) return "Today";
-  if (timestamp >= start.getTime() - 86_400_000) return "Yesterday";
-  return new Intl.DateTimeFormat(undefined, { month: "long", day: "numeric" }).format(
-    new Date(timestamp),
-  );
-}
-
-function groupByDay(rows: FeedRow[]): { bucket: string; items: FeedRow[] }[] {
-  const groups: { bucket: string; items: FeedRow[] }[] = [];
-  for (const row of rows) {
-    const bucket = bucketOf(row.createdAt);
-    const last = groups.at(-1);
-    if (last?.bucket === bucket) last.items.push(row);
-    else groups.push({ bucket, items: [row] });
-  }
-  return groups;
-}
-
-/**
- * "Needs attention" three times in a row is one card misbehaving, not three
- * things to read. Consecutive events for the same card and action fold into
- * one row that keeps the newest stamp.
- */
-function foldRuns(notifications: TriageNotification[]): FeedRow[] {
-  const rows: FeedRow[] = [];
-  for (const notification of notifications) {
-    const last = rows.at(-1);
-    if (
-      last &&
-      last.taskNumber === notification.taskNumber &&
-      last.action === notification.action
-    ) {
-      last.count += 1;
-      last.createdAt = Math.max(last.createdAt, notification.createdAt);
-      last.unread ||= notification.readAt === null;
-      last.notificationIds.push(notification.id);
-      continue;
-    }
-    rows.push({
-      id: notification.id,
-      notificationIds: [notification.id],
-      taskNumber: notification.taskNumber,
-      taskTitle: notification.taskTitle,
-      action: notification.action,
-      level: notification.level,
-      body: notification.body,
-      count: 1,
-      createdAt: notification.createdAt,
-      unread: notification.readAt === null,
-    });
-  }
-  return rows;
-}
-
-function cardStamp(task: Task): number {
-  return isPending(task) ? task.scheduledAt ?? task.updatedAt : task.updatedAt;
-}
-
-function toCardRow(task: Task): CardRow {
-  return {
-    task,
-    unread: false,
-    events: 0,
-    notificationIds: [],
-    reason: task.attentionReason,
-    stamp: cardStamp(task),
-  };
-}
-
-/** A broken card outranks a merely waiting one; after that, most recent wins. */
-function attentionRank(task: Task): number {
-  if (task.runState === "failed") return 0;
-  if (task.attentionReason !== null) return 1;
-  return 2;
-}
-
-/**
- * The cards that currently want a person, each carrying its own history. The
- * card is the thing that needs answering, so its events belong to it rather
- * than to the chronological feed, where a fresh failure would sink under a
- * fortnight of routine updates.
- */
-function buildAttention(
-  tasks: Task[],
-  notifications: TriageNotification[],
-): { rows: CardRow[]; absorbed: ReadonlySet<string> } {
-  const rows = tasks.filter(needsAttention).map(toCardRow);
-  const byNumber = new Map(rows.map((row) => [row.task.number, row]));
-  const absorbed = new Set<string>();
-
-  for (const notification of notifications) {
-    if (notification.level !== "attention" || notification.taskNumber === null) continue;
-    const row = byNumber.get(notification.taskNumber);
-    if (!row) continue;
-    absorbed.add(notification.id);
-    row.events += 1;
-    row.notificationIds.push(notification.id);
-    row.unread ||= notification.readAt === null;
-    row.reason ??= notification.body;
-  }
-
-  rows.sort((a, b) => attentionRank(a.task) - attentionRank(b.task) || b.stamp - a.stamp);
-  return { rows, absorbed };
-}
 
 function Tally({ count }: { count: number }) {
   if (count < 2) return null;
@@ -440,13 +273,11 @@ function NotificationCenter({
 
     // Snapshot once, at open. A realtime notification arriving while the user
     // is reading must stay unread until they actually see a later popover.
-    const unreadIds = notifications
-      .filter((notification) => notification.readAt === null)
-      .map((notification) => notification.id);
-    if (unreadIds.length === 0) return;
+    const ids = unreadIds(notifications);
+    if (ids.length === 0) return;
 
     const timer = window.setTimeout(() => {
-      void onMarkReadRef.current(unreadIds).catch((error) => {
+      void onMarkReadRef.current(ids).catch((error) => {
         toast.error("Could not mark notifications read", {
           description: error instanceof Error ? error.message : String(error),
         });

@@ -775,6 +775,19 @@
   opacity: 0;
 }
 
+/* A touch device has no hover to reveal the delete with, so the affordance is
+   simply always present there — same principle as the card actions above. */
+@media (hover: none) and (pointer: coarse) {
+  .triage-notification-row:has(.triage-notification-delete) .triage-notification-delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .triage-notification-row:has(.triage-notification-delete) .triage-notification-time {
+    opacity: 0;
+  }
+}
+
 .triage-notification-row[data-unread] {
   background: color-mix(in oklch, var(--primary) 5%, transparent);
 }
