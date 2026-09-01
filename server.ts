@@ -8,52 +8,16 @@ const stageSchema = z.object({
   systemRole: z.enum(["intake", "active", "attention", "done"]).nullable(),
 });
 
-const taskSchema = z.object({
-  id: z.string(),
-  number: z.number().int().positive(),
-  title: z.string(),
-  description: z.string(),
-  stageId: z.string(),
-  projectId: z.string(),
-  projectName: z.string(),
-  machineId: z.string().nullable(),
-  machineName: z.string(),
-  providerId: z.string(),
-  model: z.string(),
-  scheduledAt: z.number().int().nullable(),
-  threadId: z.string().nullable(),
-  runState: z.enum([
-    "queued",
-    "scheduled",
-    "dispatching",
-    "starting",
-    "working",
-    "idle",
-    "failed",
-    "completed",
-    "stopped",
-  ]),
-  attentionReason: z.string().nullable(),
-  createdAt: z.number().int(),
-  updatedAt: z.number().int(),
-});
-
-const notificationSchema = z.object({
-  id: z.string(),
-  taskNumber: z.number().int().nullable(),
-  title: z.string(),
-  body: z.string(),
-  level: z.enum(["info", "success", "attention"]),
-  readAt: z.number().int().nullable(),
-  createdAt: z.number().int(),
-});
-
-const projectOptionSchema = z.object({ id: z.string(), name: z.string() });
-const machineOptionSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  status: z.enum(["connected", "disconnected"]),
-});
+const reasoningLevelSchema = z.enum([
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "ultracode",
+  "max",
+  "ultra",
+]);
 
 const executionSourceSchema = z.enum(["explicit", "client-preference"]);
 export const newThreadRequestSchema = z
@@ -61,16 +25,7 @@ export const newThreadRequestSchema = z
     projectId: z.string().min(1),
     providerId: z.string().min(1),
     model: z.string().min(1),
-    reasoningLevel: z.enum([
-      "none",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "ultracode",
-      "max",
-      "ultra",
-    ]),
+    reasoningLevel: reasoningLevelSchema,
     permissionMode: z.enum(["accept-edits", "auto", "full"]),
     serviceTier: z.enum(["default", "fast"]).optional(),
     executionInputSources: z
@@ -86,6 +41,81 @@ export const newThreadRequestSchema = z
     input: z.array(z.object({ type: z.string().min(1) }).passthrough()).min(1),
   })
   .strict();
+
+const taskSchema = z.object({
+  id: z.string(),
+  number: z.number().int().positive(),
+  title: z.string(),
+  description: z.string(),
+  stageId: z.string(),
+  projectId: z.string(),
+  projectName: z.string(),
+  machineId: z.string().nullable(),
+  machineName: z.string(),
+  branchName: z.string(),
+  providerId: z.string(),
+  model: z.string(),
+  reasoningLevel: reasoningLevelSchema,
+  request: newThreadRequestSchema.nullable(),
+  scheduledAt: z.number().int().nullable(),
+  threadId: z.string().nullable(),
+  runState: z.enum([
+    "queued",
+    "scheduled",
+    "dispatching",
+    "starting",
+    "working",
+    "idle",
+    "failed",
+    "completed",
+    "stopped",
+  ]),
+  attentionReason: z.string().nullable(),
+  readAt: z.number().int().nullable(),
+  settledAt: z.number().int().nullable(),
+  createdAt: z.number().int(),
+  updatedAt: z.number().int(),
+});
+
+const notificationSchema = z.object({
+  id: z.string(),
+  taskNumber: z.number().int().nullable(),
+  action: z.string(),
+  taskTitle: z.string().nullable(),
+  title: z.string(),
+  body: z.string(),
+  level: z.enum(["info", "success", "attention"]),
+  readAt: z.number().int().nullable(),
+  createdAt: z.number().int(),
+});
+
+const projectOptionSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["personal", "standard"]),
+  name: z.string(),
+});
+const machineOptionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: z.enum(["connected", "disconnected"]),
+});
+
+const agentOptionsSchema = z.object({
+  providers: z.array(
+    z.object({ id: z.string(), name: z.string(), available: z.boolean() }),
+  ),
+  models: z.array(
+    z.object({
+      id: z.string(),
+      providerId: z.string(),
+      model: z.string(),
+      displayName: z.string(),
+      description: z.string(),
+      supportedReasoningEfforts: z.array(reasoningLevelSchema),
+      defaultReasoningEffort: reasoningLevelSchema,
+    }),
+  ),
+});
 
 export const rpcContract = defineRpcContract({
   snapshot: {
@@ -122,7 +152,43 @@ export const rpcContract = defineRpcContract({
       .strict(),
     output: taskSchema,
   },
+  updateTask: {
+    input: z
+      .object({
+        number: z.number().int().positive(),
+        title: z.string().trim().min(1).max(160),
+        description: z.string().max(50_000),
+        stageId: z.string().min(1),
+        scheduledAt: z.number().int().nullable(),
+        /** Agent retargeting; accepted only before a thread exists. */
+        providerId: z.string().min(1).optional(),
+        model: z.string().min(1).optional(),
+        reasoningLevel: reasoningLevelSchema.optional(),
+        /** Full composer state; accepted only before a thread exists. */
+        request: newThreadRequestSchema.optional(),
+      })
+      .strict(),
+    output: taskSchema,
+  },
+  setTaskSettled: {
+    input: z
+      .object({ number: z.number().int().positive(), settled: z.boolean() })
+      .strict(),
+    output: taskSchema,
+  },
+  setTaskRead: {
+    input: z.object({ number: z.number().int().positive(), read: z.boolean() }).strict(),
+    output: taskSchema,
+  },
+  agentOptions: {
+    input: z.null(),
+    output: agentOptionsSchema,
+  },
   runTask: {
+    input: z.object({ number: z.number().int().positive() }).strict(),
+    output: taskSchema,
+  },
+  stopTask: {
     input: z.object({ number: z.number().int().positive() }).strict(),
     output: taskSchema,
   },
@@ -151,7 +217,16 @@ export const rpcContract = defineRpcContract({
     output: z.object({ ok: z.literal(true) }),
   },
   markNotificationsRead: {
-    input: z.null(),
+    input: z
+      .object({
+        /** null is the explicit "mark all" action; ids is a popover snapshot. */
+        ids: z.array(z.string().min(1)).max(50).nullable(),
+      })
+      .strict(),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  deleteNotifications: {
+    input: z.object({ ids: z.array(z.string().min(1)).min(1).max(50) }).strict(),
     output: z.object({ ok: z.literal(true) }),
   },
 });
@@ -189,13 +264,17 @@ interface TaskRow {
     | "completed"
     | "stopped";
   attention_reason: string | null;
+  read_at: number | null;
   created_at: number;
   updated_at: number;
+  settled_at: number | null;
 }
 
 interface NotificationRow {
   id: string;
   task_number: number | null;
+  action: string | null;
+  task_title: string | null;
   title: string;
   body: string;
   level: "info" | "success" | "attention";
@@ -252,16 +331,21 @@ const migrations = [
   `INSERT OR IGNORE INTO triage_stages (id, name, position, system_role) VALUES
     ('stage-todo', 'To Do', 100, 'intake'),
     ('stage-progress', 'In Progress', 200, 'active'),
-    ('stage-review', 'Review', 300, NULL),
-    ('stage-attention', 'Needs Attention', 400, 'attention'),
-    ('stage-testing', 'Testing', 500, NULL),
-    ('stage-completed', 'Completed', 600, 'done')`,
+    ('stage-attention', 'Human Review', 300, 'attention'),
+    ('stage-completed', 'Completed', 400, 'done')`,
   `CREATE TABLE IF NOT EXISTS triage_meta (
     key TEXT PRIMARY KEY,
     value INTEGER NOT NULL
   )`,
   `INSERT OR IGNORE INTO triage_meta (key, value)
     SELECT 'next_task_number', COALESCE(MAX(number), 0) + 1 FROM triage_tasks`,
+  // The notification list shows "what happened" above "which card it happened
+  // to", so both are stored rather than parsed back out of the prose title.
+  `ALTER TABLE triage_notifications ADD COLUMN action TEXT`,
+  `ALTER TABLE triage_notifications ADD COLUMN task_title TEXT`,
+  // Settled is orthogonal to workflow stage: archive a resolved card without losing its column.
+  `ALTER TABLE triage_tasks ADD COLUMN settled_at INTEGER`,
+  `ALTER TABLE triage_tasks ADD COLUMN read_at INTEGER`,
 ];
 
 function toStage(row: StageRow) {
@@ -274,6 +358,17 @@ function toStage(row: StageRow) {
 }
 
 function toTask(row: TaskRow) {
+  const storedRequest = newThreadRequestSchema.safeParse(JSON.parse(row.request_json));
+  const environment = storedRequest.success ? storedRequest.data.environment : null;
+  const workspace = environment && typeof environment.workspace === "object" && environment.workspace !== null ? environment.workspace as Record<string, unknown> : null;
+  const branch = workspace && typeof workspace.branch === "object" && workspace.branch !== null ? workspace.branch as Record<string, unknown> : null;
+  const baseBranch = workspace && typeof workspace.baseBranch === "object" && workspace.baseBranch !== null ? workspace.baseBranch as Record<string, unknown> : null;
+  const branchName = branch?.kind === "existing" && typeof branch.name === "string" ? branch.name
+    : branch?.kind === "new" && typeof branch.baseBranch === "string" ? `new from ${branch.baseBranch}`
+      : baseBranch?.kind === "named" && typeof baseBranch.name === "string" ? `new from ${baseBranch.name}`
+        : environment?.type === "reuse" ? "Reused workspace"
+          : workspace?.type === "personal" ? "No branch"
+            : "Default branch";
   return {
     id: row.id,
     number: row.number,
@@ -284,21 +379,37 @@ function toTask(row: TaskRow) {
     projectName: row.project_name,
     machineId: row.machine_id,
     machineName: row.machine_name,
+    branchName,
     providerId: row.provider_id,
     model: row.model,
+    reasoningLevel: storedRequest.success ? storedRequest.data.reasoningLevel : "none" as const,
+    request: storedRequest.success ? storedRequest.data : null,
     scheduledAt: row.scheduled_at,
     threadId: row.thread_id,
     runState: row.run_state,
     attentionReason: row.attention_reason,
+    readAt: row.read_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    settledAt: row.settled_at,
   };
+}
+
+/** Recover a short action phrase from a legacy "Triage #12 started" title. */
+function actionFromTitle(title: string, taskNumber: number | null): string {
+  if (taskNumber === null) return title;
+  const stripped = title.replace(new RegExp(`^Triage #${taskNumber}\\s+`), "");
+  if (stripped === title) return title;
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
 }
 
 function toNotification(row: NotificationRow) {
   return {
     id: row.id,
     taskNumber: row.task_number,
+    // Rows written before the split still carry the action inside the title.
+    action: row.action ?? actionFromTitle(row.title, row.task_number),
+    taskTitle: row.task_title,
     title: row.title,
     body: row.body,
     level: row.level,
@@ -329,6 +440,18 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 export default async function plugin(bb: BbPluginApi) {
   const db = bb.storage.database();
   bb.storage.migrate(db, migrations);
+
+  // Read by the frontend's thread-list slot. Declaring it here is what puts the
+  // switch on the plugin's page in Tools; the board itself never reads it.
+  bb.settings.define({
+    showInSidebar: {
+      type: "boolean",
+      label: "Show Triage in the sidebar",
+      description:
+        "List your Triage cards above the threads in BB's sidebar, ordered by what needs you first.",
+      default: false,
+    },
+  });
 
   const listStages = () =>
     (db
@@ -382,6 +505,8 @@ export default async function plugin(bb: BbPluginApi) {
 
   const publish = (notification?: {
     taskNumber: number | null;
+    action: string;
+    taskTitle: string | null;
     title: string;
     body: string;
     level: "info" | "success" | "attention";
@@ -395,21 +520,36 @@ export default async function plugin(bb: BbPluginApi) {
 
   const notify = (input: {
     taskNumber: number | null;
-    title: string;
+    /** Short phrase: what just happened. */
+    action: string;
+    /** Title of the card it happened to, so the list can name it. */
+    taskTitle: string | null;
     body: string;
     level: "info" | "success" | "attention";
   }) => {
+    const title = input.taskNumber === null
+      ? input.action
+      : `Triage #${input.taskNumber} · ${input.action}`;
     db.prepare(
-      "INSERT INTO triage_notifications (id, task_number, title, body, level, read_at, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)",
+      "INSERT INTO triage_notifications (id, task_number, action, task_title, title, body, level, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)",
     ).run(
       crypto.randomUUID(),
       input.taskNumber,
-      input.title,
+      input.action,
+      input.taskTitle,
+      title,
       input.body,
       input.level,
       Date.now(),
     );
-    publish(input);
+    publish({
+      taskNumber: input.taskNumber,
+      action: input.action,
+      taskTitle: input.taskTitle,
+      title,
+      body: input.body,
+      level: input.level,
+    });
   };
 
   const moveTask = (
@@ -424,14 +564,17 @@ export default async function plugin(bb: BbPluginApi) {
     const now = Date.now();
     const nextRunState = stage.system_role === "done" ? "completed" : task.run_state;
     db.prepare(
-      "UPDATE triage_tasks SET stage_id = ?, run_state = ?, attention_reason = CASE WHEN ? = 'attention' THEN attention_reason ELSE NULL END, updated_at = ? WHERE id = ?",
-    ).run(stage.id, nextRunState, stage.system_role, now, task.id);
+      `UPDATE triage_tasks SET stage_id = ?, run_state = ?,
+       attention_reason = CASE WHEN ? = 'attention' THEN attention_reason ELSE NULL END,
+       read_at = CASE WHEN ? = 'agent' THEN NULL ELSE read_at END, updated_at = ? WHERE id = ?`,
+    ).run(stage.id, nextRunState, stage.system_role, actor, now, task.id);
     addEvent(task.id, actor, `moved to ${stage.name}`, summary);
     if (shouldNotify) {
       notify({
         taskNumber: number,
-        title: `Triage #${number} moved to ${stage.name}`,
-        body: summary?.trim() || `The assigned agent moved “${task.title}”.`,
+        action: `Moved to ${stage.name}`,
+        taskTitle: task.title,
+        body: summary?.trim() || "The assigned agent moved this card.",
         level: stage.system_role === "attention" ? "attention" : "success",
       });
     } else {
@@ -474,15 +617,28 @@ export default async function plugin(bb: BbPluginApi) {
     try {
       const request = newThreadRequestSchema.parse(JSON.parse(current.request_json));
       const stages = listStages().map((stage) => stage.name).join(", ");
+      const reviewStage = getSystemStage("attention");
+      const doneStage = getSystemStage("done");
+      // Older composer builds persisted visible text as `visibility: "user"`.
+      // The thread API represents visible input by omitting visibility and only
+      // accepts the explicit value `agent-only`, so normalize stored requests
+      // before a delayed dispatch.
+      const normalizedInput = request.input.map((part) => {
+        if (part.visibility === "agent-only" || part.visibility === undefined) return part;
+        const { visibility: _visibility, ...visiblePart } = part;
+        return visiblePart;
+      });
       const input = [
-        ...request.input,
+        ...normalizedInput,
         {
           type: "text" as const,
           visibility: "agent-only" as const,
           text:
             `You are assigned to Triage #${number}. The available stages are: ${stages}. ` +
             `Move the card with the triage_move_task tool when the work meaningfully changes stage. ` +
-            `Move it to Needs Attention if you are blocked, and include a concise handoff summary.`,
+            `Use ${reviewStage.name} when a person must approve, decide, provide access, or interpret incomplete verification. ` +
+            `Use ${doneStage.name} only when the requested scope is satisfied, relevant verification passed, and no required work remains. ` +
+            `For a user-created stage, move there only when its name unambiguously matches the work state; otherwise use ${reviewStage.name} and explain why.`,
           mentions: [],
         },
       ];
@@ -501,8 +657,9 @@ export default async function plugin(bb: BbPluginApi) {
       addEvent(current.id, "scheduler", "agent dispatched");
       notify({
         taskNumber: number,
-        title: `Triage #${number} started`,
-        body: `“${current.title}” was assigned to ${current.provider_id}.`,
+        action: "Agent started",
+        taskTitle: current.title,
+        body: `Assigned to ${current.provider_id} · ${current.model}.`,
         level: "info",
       });
       return toTask(getTaskRow(number));
@@ -510,12 +667,13 @@ export default async function plugin(bb: BbPluginApi) {
       const message = errorMessage(error);
       const attention = getSystemStage("attention");
       db.prepare(
-        "UPDATE triage_tasks SET stage_id = ?, run_state = 'failed', attention_reason = ?, updated_at = ? WHERE id = ?",
+        "UPDATE triage_tasks SET stage_id = ?, run_state = 'failed', attention_reason = ?, read_at = NULL, updated_at = ? WHERE id = ?",
       ).run(attention.id, message, Date.now(), current.id);
       addEvent(current.id, "scheduler", "dispatch failed", message);
       notify({
         taskNumber: number,
-        title: `Triage #${number} needs attention`,
+        action: "Needs attention",
+        taskTitle: current.title,
         body: message,
         level: "attention",
       });
@@ -529,7 +687,12 @@ export default async function plugin(bb: BbPluginApi) {
       bb.sdk.projects.list({ includePersonal: true }),
       bb.sdk.hosts.list(),
     ]);
-    const projects = projectRows.map((project) => ({ id: project.id, name: project.name }));
+    const projects = [...projectRows]
+      .sort((left, right) => {
+        if (left.kind === right.kind) return 0;
+        return left.kind === "personal" ? -1 : 1;
+      })
+      .map((project) => ({ id: project.id, kind: project.kind, name: project.name }));
     const machines = machineRows.map((machine) => ({
       id: machine.id,
       name: machine.name,
@@ -548,8 +711,58 @@ export default async function plugin(bb: BbPluginApi) {
     return { stages: listStages(), tasks: listTasks(), projects, machines, notifications, unreadCount };
   };
 
+  /**
+   * Provider and model catalogue for the edit dialog's agent picker. A host
+   * that cannot enumerate one provider should still offer the others, so each
+   * lookup fails on its own.
+   */
+  const agentOptions = async () => {
+    const providers = await bb.sdk.providers.list();
+    const models: {
+      id: string;
+      providerId: string;
+      model: string;
+      displayName: string;
+      description: string;
+      supportedReasoningEfforts: (typeof reasoningLevelSchema)["options"][number][];
+      defaultReasoningEffort: (typeof reasoningLevelSchema)["options"][number];
+    }[] = [];
+    for (const provider of providers) {
+      if (!provider.available) continue;
+      try {
+        const result = await bb.sdk.providers.models({ providerId: provider.id });
+        for (const model of result.models) {
+          models.push({
+            id: `${provider.id}:${model.id}`,
+            providerId: provider.id,
+            model: model.model,
+            displayName: model.displayName,
+            description: model.description,
+            supportedReasoningEfforts: model.supportedReasoningEfforts.map(
+              (effort) => effort.reasoningEffort,
+            ),
+            defaultReasoningEffort: model.defaultReasoningEffort,
+          });
+        }
+      } catch (error) {
+        bb.log.warn(
+          `Triage could not list models for ${provider.id}: ${errorMessage(error)}`,
+        );
+      }
+    }
+    return {
+      providers: providers.map((provider) => ({
+        id: provider.id,
+        name: provider.displayName,
+        available: provider.available,
+      })),
+      models,
+    };
+  };
+
   bb.rpc.register(rpcContract, {
     snapshot: () => snapshot(),
+    agentOptions: () => agentOptions(),
     async createTask(input) {
       getStageRow(input.stageId);
       const project = await bb.sdk.projects.get({ projectId: input.request.projectId });
@@ -597,7 +810,147 @@ export default async function plugin(bb: BbPluginApi) {
     },
     moveTask: ({ number, stageId, summary }) =>
       moveTask(number, stageId, "user", summary, false),
+    setTaskSettled({ number, settled }) {
+      const task = getTaskRow(number);
+      const now = Date.now();
+      db.prepare(
+        "UPDATE triage_tasks SET settled_at = ?, updated_at = ? WHERE id = ?",
+      ).run(settled ? now : null, now, task.id);
+      addEvent(task.id, "user", settled ? "marked settled" : "reopened");
+      publish();
+      return toTask(getTaskRow(number));
+    },
+    setTaskRead({ number, read }) {
+      const task = getTaskRow(number);
+      db.prepare("UPDATE triage_tasks SET read_at = ? WHERE id = ?").run(read ? Date.now() : null, task.id);
+      publish();
+      return toTask(getTaskRow(number));
+    },
+    async updateTask(input) {
+      const task = getTaskRow(input.number);
+      const stage = getStageRow(input.stageId);
+      if (input.scheduledAt !== null && input.scheduledAt <= Date.now()) {
+        throw new Error("Choose a future date and time");
+      }
+      if (task.thread_id && input.scheduledAt !== task.scheduled_at) {
+        throw new Error("A task cannot be rescheduled after its agent thread has started");
+      }
+
+      const retargeting =
+        input.providerId !== undefined ||
+        input.model !== undefined ||
+        input.reasoningLevel !== undefined;
+      if (task.thread_id && retargeting) {
+        throw new Error("A task cannot change agent after its thread has started");
+      }
+
+      let request = newThreadRequestSchema.parse(JSON.parse(task.request_json));
+      let projectId = task.project_id;
+      let projectName = task.project_name;
+      let machineId = task.machine_id;
+      let machineName = task.machine_name;
+
+      if (!task.thread_id && input.request) {
+        request = input.request;
+        const project = await bb.sdk.projects.get({ projectId: request.projectId });
+        const machine = await resolveMachine(request.environment);
+        projectId = request.projectId;
+        projectName = project.name;
+        machineId = machine.machineId;
+        machineName = machine.machineName;
+      } else {
+        if (retargeting) {
+          request.providerId = input.providerId ?? request.providerId;
+          request.model = input.model ?? request.model;
+          request.reasoningLevel = input.reasoningLevel ?? request.reasoningLevel;
+          // The picked values are now the user's, not a client preference.
+          request.executionInputSources = {
+            ...request.executionInputSources,
+            ...(input.providerId !== undefined ? { providerId: "explicit" as const } : {}),
+            ...(input.model !== undefined ? { model: "explicit" as const } : {}),
+            ...(input.reasoningLevel !== undefined
+              ? { reasoningLevel: "explicit" as const }
+              : {}),
+          };
+        }
+        if (!task.thread_id) {
+          const visibleTextIndex = request.input.findIndex(
+            (part) => part.type === "text" && part.visibility !== "agent-only",
+          );
+          const visibleText = {
+            type: "text" as const,
+            text: input.description,
+            mentions: [],
+          };
+          const remaining = request.input.filter(
+            (part) => part.type !== "text" || part.visibility === "agent-only",
+          );
+          remaining.splice(Math.max(0, visibleTextIndex), 0, visibleText);
+          request.input = remaining;
+        }
+      }
+      const editableRunState = task.thread_id
+        ? task.run_state
+        : input.scheduledAt === null
+          ? "queued"
+          : "scheduled";
+      const nextRunState = stage.system_role === "done"
+        ? "completed"
+        : editableRunState;
+      db.prepare(
+        `UPDATE triage_tasks
+         SET title = ?, description = ?, stage_id = ?, request_json = ?,
+             project_id = ?, project_name = ?, machine_id = ?, machine_name = ?,
+             provider_id = ?, model = ?,
+             scheduled_at = ?, run_state = ?, updated_at = ?
+         WHERE id = ?`,
+      ).run(
+        input.title.trim(),
+        input.description,
+        input.stageId,
+        JSON.stringify(request),
+        projectId,
+        projectName,
+        machineId,
+        machineName,
+        request.providerId,
+        request.model,
+        input.scheduledAt,
+        nextRunState,
+        Date.now(),
+        task.id,
+      );
+      addEvent(task.id, "user", "edited task");
+      if (task.thread_id && input.title.trim() !== task.title) {
+        try {
+          await bb.sdk.threads.update({
+            threadId: task.thread_id,
+            title: `Triage #${task.number}: ${input.title.trim()}`,
+          });
+        } catch (error) {
+          bb.log.warn(
+            `Updated Triage #${task.number}, but its thread title could not be synced: ${errorMessage(error)}`,
+          );
+        }
+      }
+      publish();
+      return toTask(getTaskRow(input.number));
+    },
     runTask: ({ number }) => dispatchTask(number, true),
+    async stopTask({ number }) {
+      const task = getTaskRow(number);
+      if (!task.thread_id) throw new Error(`Triage #${number} has no agent thread to stop`);
+      if (!["dispatching", "starting", "working"].includes(task.run_state)) {
+        throw new Error(`Triage #${number} is not currently running`);
+      }
+      await bb.sdk.threads.stop({ threadId: task.thread_id });
+      db.prepare(
+        "UPDATE triage_tasks SET run_state = 'stopped', updated_at = ? WHERE id = ?",
+      ).run(Date.now(), task.id);
+      addEvent(task.id, "user", "agent stopped");
+      publish();
+      return toTask(getTaskRow(number));
+    },
     deleteTask({ number }) {
       const task = getTaskRow(number);
       db.transaction(() => {
@@ -665,8 +1018,23 @@ export default async function plugin(bb: BbPluginApi) {
       publish();
       return { ok: true as const };
     },
-    markNotificationsRead() {
-      db.prepare("UPDATE triage_notifications SET read_at = ? WHERE read_at IS NULL").run(Date.now());
+    markNotificationsRead({ ids }) {
+      if (ids === null) {
+        db.prepare("UPDATE triage_notifications SET read_at = ? WHERE read_at IS NULL").run(
+          Date.now(),
+        );
+      } else if (ids.length > 0) {
+        const placeholders = ids.map(() => "?").join(", ");
+        db.prepare(
+          `UPDATE triage_notifications SET read_at = ? WHERE read_at IS NULL AND id IN (${placeholders})`,
+        ).run(Date.now(), ...ids);
+      }
+      publish();
+      return { ok: true as const };
+    },
+    deleteNotifications({ ids }) {
+      const placeholders = ids.map(() => "?").join(", ");
+      db.prepare(`DELETE FROM triage_notifications WHERE id IN (${placeholders})`).run(...ids);
       publish();
       return { ok: true as const };
     },
@@ -677,10 +1045,12 @@ export default async function plugin(bb: BbPluginApi) {
     description:
       "Move the Triage card assigned to this BB thread into another workflow stage and leave a concise handoff summary.",
     instructions:
-      "Use this whenever your assigned Triage work becomes ready for review/testing/completion or needs user attention.",
-    experimental_statusLabels: {
-      pending: "Updating the Triage card",
-      completed: "Updated the Triage card",
+      "Use this whenever your assigned Triage work becomes ready for human review, completion, a clearly named custom stage, or needs user attention.",
+    presentation: {
+      label: {
+        pending: "Updating the Triage card",
+        completed: "Updated the Triage card",
+      },
     },
     parameters: z.object({
       number: z.number().int().positive().describe("The number in Triage #42"),
@@ -724,7 +1094,7 @@ export default async function plugin(bb: BbPluginApi) {
     if (!task) return;
     const active = getSystemStage("active");
     db.prepare(
-      "UPDATE triage_tasks SET stage_id = ?, run_state = 'working', attention_reason = NULL, updated_at = ? WHERE id = ?",
+      "UPDATE triage_tasks SET stage_id = ?, run_state = 'working', attention_reason = NULL, settled_at = NULL, updated_at = ? WHERE id = ?",
     ).run(active.id, Date.now(), task.id);
     addEvent(task.id, "bb", "agent active");
     publish();
@@ -733,7 +1103,11 @@ export default async function plugin(bb: BbPluginApi) {
   bb.events.on("thread.idle", ({ thread }) => {
     const task = getTaskByThread(thread.id);
     if (!task) return;
-    db.prepare("UPDATE triage_tasks SET run_state = 'idle', updated_at = ? WHERE id = ?").run(
+    if (task.run_state === "stopped") {
+      publish();
+      return;
+    }
+    db.prepare("UPDATE triage_tasks SET run_state = 'idle', read_at = NULL, updated_at = ? WHERE id = ?").run(
       Date.now(),
       task.id,
     );
@@ -741,8 +1115,9 @@ export default async function plugin(bb: BbPluginApi) {
     if (stage.system_role === "active") {
       notify({
         taskNumber: task.number,
-        title: `Triage #${task.number} is waiting`,
-        body: `The agent working on “${task.title}” is idle. Open the thread to review its update.`,
+        action: "Waiting for you",
+        taskTitle: task.title,
+        body: "The agent finished its turn. Open the thread to review its update.",
         level: "info",
       });
     } else {
@@ -761,7 +1136,8 @@ export default async function plugin(bb: BbPluginApi) {
     addEvent(task.id, "bb", "agent failed", reason);
     notify({
       taskNumber: task.number,
-      title: `Triage #${task.number} needs attention`,
+      action: "Needs attention",
+      taskTitle: task.title,
       body: reason,
       level: "attention",
     });
@@ -775,7 +1151,8 @@ export default async function plugin(bb: BbPluginApi) {
     ).run(Date.now(), task.id);
     notify({
       taskNumber: task.number,
-      title: `Triage #${task.number} lost its thread`,
+      action: "Lost its thread",
+      taskTitle: task.title,
       body: "The linked BB thread was deleted. You can run the card again.",
       level: "attention",
     });

@@ -1,0 +1,466 @@
+import * as React from "react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { StatusDot } from "@/components/ui/status-dot";
+import {
+  formatShortWhen,
+  isPending,
+  isTaskRunning,
+  needsAttention,
+  presentRunState,
+} from "@/lib/triage-format";
+import {
+  FEED_LIMIT,
+  LENS_ORDER,
+  LENSES,
+  LEVEL_TONE,
+  buildAttention,
+  foldRuns,
+  groupByDay,
+  toCardRow,
+  unreadIds,
+  type CardRow,
+  type FeedRow,
+  type LensId,
+} from "@/lib/notification-feed";
+import type { Task, TriageNotification } from "@/lib/triage-types";
+
+/** Long enough to glance, short enough that the badge clears while open. */
+const GLANCE_READ_DELAY_MS = 800;
+
+function Tally({ count }: { count: number }) {
+  if (count < 2) return null;
+  return (
+    <>
+      <span className="triage-notification-tally tabular-nums" aria-hidden="true">
+        ×{count}
+      </span>
+      <span className="sr-only">, {count} times</span>
+    </>
+  );
+}
+
+function BrowserPermissionRow() {
+  const [permission, setPermission] = React.useState<NotificationPermission | "unsupported">(
+    () => (typeof Notification === "undefined" ? "unsupported" : Notification.permission),
+  );
+
+  if (permission !== "default") return null;
+
+  return (
+    <button
+      type="button"
+      className="triage-notification-optin"
+      onClick={() => {
+        void Notification.requestPermission().then((next) => {
+          setPermission(next);
+          if (next === "granted") toast.success("Browser notifications enabled");
+        });
+      }}
+    >
+      <Icon name="MailOpen" className="size-4 shrink-0 text-primary" aria-hidden="true" />
+      <span className="min-w-0">
+        <span className="block text-[13px] font-medium">Enable browser notifications</span>
+        <span className="block truncate text-[11px] text-muted-foreground">
+          Get alerted while BB is in the background
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function NotificationDeleteButton({
+  label,
+  onDelete,
+}: {
+  label: string;
+  onDelete: () => Promise<void>;
+}) {
+  const [deleting, setDeleting] = React.useState(false);
+
+  return (
+    <button
+      type="button"
+      className="triage-notification-delete"
+      aria-label={label}
+      title={label}
+      disabled={deleting}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDeleting(true);
+        void onDelete()
+          .catch((error) => {
+            toast.error("Could not delete notification", {
+              description: error instanceof Error ? error.message : String(error),
+            });
+          })
+          .finally(() => setDeleting(false));
+      }}
+    >
+      <Icon name="Trash2" className="size-3.5" aria-hidden="true" />
+    </button>
+  );
+}
+
+function CardRowButton({
+  row,
+  onOpen,
+  onDelete,
+}: {
+  row: CardRow;
+  onOpen: () => void;
+  onDelete?: () => Promise<void>;
+}) {
+  const status = presentRunState(row.task);
+  return (
+    <div data-unread={row.unread ? "" : undefined} className="triage-notification-row">
+      <button
+        type="button"
+        className="triage-notification-row-main"
+        title={row.reason ?? undefined}
+        onClick={onOpen}
+      >
+        <StatusDot tone={status.tone} size="sm" pulse={status.live} />
+        <span className="min-w-0">
+          <span className="triage-notification-action">
+            <span className="triage-notification-action-text">{row.task.title}</span>
+            <Tally count={row.events} />
+          </span>
+          <span className="triage-notification-target">
+            <span className="triage-notification-state">{status.label}</span>
+            {" · "}
+            <span className="tabular-nums">#{row.task.number}</span>
+            {" · "}
+            {row.task.projectName}
+          </span>
+          {row.reason ? <span className="triage-notification-reason">{row.reason}</span> : null}
+        </span>
+      </button>
+      <span className="triage-notification-trailing">
+        <span className="triage-notification-time tabular-nums">
+          {formatShortWhen(row.stamp)}
+        </span>
+        {onDelete ? (
+          <NotificationDeleteButton
+            label={`Delete notifications for ${row.task.title}`}
+            onDelete={onDelete}
+          />
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+function FeedRowButton({
+  row,
+  task,
+  onOpen,
+  onDelete,
+}: {
+  row: FeedRow;
+  task: Task | null;
+  onOpen: (taskNumber: number) => void;
+  onDelete: () => Promise<void>;
+}) {
+  const missing = row.taskNumber !== null && task === null;
+  // Only states a person can act on are worth the width; "completed" on a
+  // week-old row says nothing the action line has not already said.
+  const status = task && (isTaskRunning(task) || needsAttention(task)) ? presentRunState(task) : null;
+
+  return (
+    <div data-unread={row.unread ? "" : undefined} className="triage-notification-row">
+      <button
+        type="button"
+        className="triage-notification-row-main"
+        title={row.body || undefined}
+        disabled={row.taskNumber === null || missing}
+        onClick={() => {
+          if (row.taskNumber === null || missing) return;
+          onOpen(row.taskNumber);
+        }}
+      >
+        <StatusDot
+          tone={status ? status.tone : LEVEL_TONE[row.level]}
+          size="sm"
+          pulse={status?.live ?? false}
+        />
+        <span className="min-w-0">
+          <span className="triage-notification-action">
+            <span className="triage-notification-action-text">{row.action}</span>
+            <Tally count={row.count} />
+          </span>
+          <span className="triage-notification-target">
+            {row.taskNumber === null ? (
+              row.body
+            ) : (
+              <>
+                {status ? (
+                  <>
+                    <span className="triage-notification-state">{status.label}</span>
+                    {" · "}
+                  </>
+                ) : null}
+                <span className="tabular-nums">#{row.taskNumber}</span>
+                {missing ? (
+                  <>
+                    {" · "}
+                    <span className="triage-notification-missing">card deleted</span>
+                    {row.taskTitle ? <> · {row.taskTitle}</> : null}
+                  </>
+                ) : task && task.title ? (
+                  <> · {task.title}</>
+                ) : null}
+              </>
+            )}
+          </span>
+          {row.level === "attention" && row.body ? (
+            <span className="triage-notification-reason">{row.body}</span>
+          ) : null}
+        </span>
+      </button>
+      <span className="triage-notification-trailing">
+        <span className="triage-notification-time tabular-nums">
+          {formatShortWhen(row.createdAt)}
+        </span>
+        <NotificationDeleteButton label={`Delete notification: ${row.action}`} onDelete={onDelete} />
+      </span>
+    </div>
+  );
+}
+
+export interface NotificationCenterProps {
+  notifications: TriageNotification[];
+  /**
+   * Every card on the board. History alone cannot say what is true now, so
+   * rows are joined against live cards by number.
+   */
+  tasks: Task[];
+  unreadCount: number;
+  onSelect: (taskNumber: number) => void;
+  onMarkRead: (ids: string[] | null) => Promise<void>;
+  onDelete: (ids: string[]) => Promise<void>;
+}
+
+/**
+ * A status surface with a log underneath it, not a log. The digest and the
+ * pinned group answer "what needs me" before the feed gets a chance to bury
+ * it, and every row is joined to its live card so it can say what is true now
+ * rather than only what happened once.
+ */
+function NotificationCenter({
+  notifications,
+  tasks,
+  unreadCount,
+  onSelect,
+  onMarkRead,
+  onDelete,
+}: NotificationCenterProps) {
+  const [open, setOpen] = React.useState(false);
+  const [lens, setLens] = React.useState<LensId | null>(null);
+  const onMarkReadRef = React.useRef(onMarkRead);
+  onMarkReadRef.current = onMarkRead;
+
+  React.useEffect(() => {
+    if (!open) return;
+
+    // Snapshot once, at open. A realtime notification arriving while the user
+    // is reading must stay unread until they actually see a later popover.
+    const ids = unreadIds(notifications);
+    if (ids.length === 0) return;
+
+    const timer = window.setTimeout(() => {
+      void onMarkReadRef.current(ids).catch((error) => {
+        toast.error("Could not mark notifications read", {
+          description: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }, GLANCE_READ_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+    // The open transition deliberately owns the snapshot; notification
+    // updates while open must neither replace nor expand it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const taskByNumber = React.useMemo(
+    () => new Map(tasks.map((task) => [task.number, task])),
+    [tasks],
+  );
+
+  const counts = React.useMemo<Record<LensId, number>>(
+    () => ({
+      attention: tasks.filter(needsAttention).length,
+      live: tasks.filter(isTaskRunning).length,
+      scheduled: tasks.filter(isPending).length,
+    }),
+    [tasks],
+  );
+
+  // A lens whose count has since drained would strand the panel on an empty
+  // list, so emptiness releases it rather than an effect chasing the counts.
+  const activeLens = lens !== null && counts[lens] > 0 ? lens : null;
+
+  const attention = React.useMemo(
+    () => buildAttention(tasks, notifications),
+    [notifications, tasks],
+  );
+
+  const cardRows = React.useMemo(() => {
+    if (activeLens === null || activeLens === "attention") return attention.rows;
+    const rows = tasks.filter(LENSES[activeLens].match).map(toCardRow);
+    // Pending cards read forwards — the next one to fire is the useful one.
+    return rows.sort((a, b) =>
+      activeLens === "scheduled" ? a.stamp - b.stamp : b.stamp - a.stamp,
+    );
+  }, [activeLens, attention, tasks]);
+
+  const feed = React.useMemo(
+    () =>
+      groupByDay(
+        foldRuns(
+          notifications
+            .filter((notification) => !attention.absorbed.has(notification.id))
+            .slice(0, FEED_LIMIT),
+        ),
+      ),
+    [attention, notifications],
+  );
+
+  const openTask = React.useCallback(
+    (taskNumber: number) => {
+      setOpen(false);
+      onSelect(taskNumber);
+    },
+    [onSelect],
+  );
+
+  const showFeed = activeLens === null;
+  const groupLabel = activeLens === null ? LENSES.attention.label : LENSES[activeLens].label;
+  const groupPinned = activeLens === null || activeLens === "attention";
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
+        >
+          <span className="triage-notification-icon" aria-hidden="true">
+            <Icon name="Mail" className="size-4" />
+            {unreadCount > 0 ? (
+              <span className="triage-notification-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
+            ) : null}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        className="triage-notification-panel"
+        mobileTitle="Notifications"
+      >
+        <header className="triage-notification-header">
+          <span className="text-[13px] font-semibold">Notifications</span>
+          {unreadCount > 0 ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[11px] text-muted-foreground"
+              onClick={() => {
+                void onMarkRead(null).catch((error) => {
+                  toast.error("Could not mark notifications read", {
+                    description: error instanceof Error ? error.message : String(error),
+                  });
+                });
+              }}
+            >
+              Mark all read
+            </Button>
+          ) : null}
+        </header>
+        <div className="triage-notification-digest" role="group" aria-label="Board status">
+          {LENS_ORDER.map((id) => {
+            const active = id === activeLens;
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={active}
+                data-state={active ? "active" : undefined}
+                className="triage-notification-lens"
+                title={active ? "Show everything" : LENSES[id].hint}
+                disabled={counts[id] === 0}
+                onClick={() => setLens(active ? null : id)}
+              >
+                <StatusDot tone={LENSES[id].tone} size="sm" />
+                <span className="truncate">{LENSES[id].label}</span>
+                <span className="triage-notification-lens-count tabular-nums">{counts[id]}</span>
+              </button>
+            );
+          })}
+        </div>
+        <BrowserPermissionRow />
+        <div className="triage-notification-scroll">
+          {cardRows.length === 0 && feed.length === 0 ? (
+            <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">
+              Nothing needs your attention yet.
+            </p>
+          ) : (
+            <>
+              {cardRows.length > 0 ? (
+                <section>
+                  <h4 className="triage-notification-bucket" data-pinned={groupPinned ? "" : undefined}>
+                    {groupLabel}
+                    <span className="triage-notification-bucket-count tabular-nums">
+                      {cardRows.length}
+                    </span>
+                  </h4>
+                  {cardRows.map((row) => (
+                    <CardRowButton
+                      key={row.task.id}
+                      row={row}
+                      onOpen={() => openTask(row.task.number)}
+                      onDelete={
+                        row.notificationIds.length > 0
+                          ? () => onDelete(row.notificationIds)
+                          : undefined
+                      }
+                    />
+                  ))}
+                </section>
+              ) : null}
+              {showFeed
+                ? feed.map((group) => (
+                    <section key={group.bucket}>
+                      <h4 className="triage-notification-bucket">{group.bucket}</h4>
+                      {group.items.map((row) => (
+                        <FeedRowButton
+                          key={row.id}
+                          row={row}
+                          task={row.taskNumber === null ? null : taskByNumber.get(row.taskNumber) ?? null}
+                          onOpen={openTask}
+                          onDelete={() => onDelete(row.notificationIds)}
+                        />
+                      ))}
+                    </section>
+                  ))
+                : null}
+            </>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+export { NotificationCenter };
