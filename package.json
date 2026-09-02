@@ -27,7 +27,8 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.31.0",
     "react-day-picker": "^10.0.1",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@radix-ui/react-dialog": "^1.1.19",
@@ -41,8 +42,7 @@
     "sonner": "^2.0.8",
     "tsx": "^4.23.13",
     "typescript": "^5.7.0",
-    "vaul": "^1.1.2",
-    "zod": "^4.3.6"
+    "vaul": "^1.1.2"
   },
   "scripts": {
     "build": "bb plugin build",
