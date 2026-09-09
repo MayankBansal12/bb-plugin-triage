@@ -17,13 +17,6 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { formatWhen, titleFromPrompt, toDatetimeLocal } from "@/lib/triage-format";
 import type { TriageRpc } from "@/lib/triage-store";
 import type { Stage, Task } from "@/lib/triage-types";
@@ -77,7 +70,9 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
   const open = editing ? props.open : createOpen;
   const setOpen = editing ? props.onOpenChange : setCreateOpen;
   const [title, setTitle] = React.useState("");
-  const [editStageId, setStageId] = React.useState("");
+  const composerRef = React.useRef<HTMLDivElement>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [editSession, setEditSession] = React.useState(() => crypto.randomUUID());
   const [startMode, setStartMode] = React.useState<StartMode>("now");
   const [scheduledLocal, setScheduledLocal] = React.useState("");
 
@@ -85,7 +80,7 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
     () => props.stages.find((stage) => stage.systemRole === "intake") ?? props.stages[0],
     [props.stages],
   );
-  const stageId = editing ? editStageId : intakeStage?.id ?? "";
+  const stageId = editing ? task?.stageId ?? "" : intakeStage?.id ?? "";
   const started = Boolean(task?.threadId);
   const savedRequest = task?.request ?? null;
 
@@ -93,7 +88,7 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
     if (!open) return;
     if (task) {
       setTitle(task.title);
-      setStageId(task.stageId);
+      setEditSession(crypto.randomUUID());
       setScheduledLocal(toDatetimeLocal(task.scheduledAt));
       setStartMode(task.scheduledAt === null ? "manual" : "later");
       return;
@@ -130,40 +125,48 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
       }
     }
 
-    if (!task) {
-      const created = await props.rpc.call("createTask", {
-        title: cleanTitle,
-        description,
-        stageId,
-        scheduledAt,
-        runNow: startMode === "now",
-        request,
-      });
-      if (startMode !== "now") {
-        toast.success("Created Triage #" + created.number, {
-          description:
-            startMode === "later" && scheduledAt
-              ? "Scheduled " + formatWhen(scheduledAt) + "."
-              : "Added to the board. Run it when ready.",
+    setSaving(true);
+    try {
+      if (!task) {
+        const created = await props.rpc.call("createTask", {
+          title: cleanTitle,
+          description,
+          stageId,
+          scheduledAt,
+          runNow: startMode === "now",
+          request,
         });
+        if (startMode !== "now") {
+          toast.success("Created Triage #" + created.number, {
+            description:
+              startMode === "later" && scheduledAt
+                ? "Scheduled " + formatWhen(scheduledAt) + "."
+                : "Added to the board. Run it when ready.",
+          });
+        }
+      } else {
+        await props.rpc.call("updateTask", {
+          number: task.number,
+          title: cleanTitle,
+          description,
+          stageId,
+          scheduledAt,
+          request,
+        });
+        if (!started && startMode === "now") {
+          await props.rpc.call("runTask", { number: task.number });
+        }
+        toast.success("Updated Triage #" + task.number);
       }
-    } else {
-      await props.rpc.call("updateTask", {
-        number: task.number,
-        title: cleanTitle,
-        description,
-        stageId,
-        scheduledAt,
-        request,
-      });
-      if (!started && startMode === "now") {
-        await props.rpc.call("runTask", { number: task.number });
-      }
-      toast.success("Updated Triage #" + task.number);
-    }
 
-    await props.onSaved();
-    setOpen(false);
+      await props.onSaved();
+      setOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save task");
+      throw error;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const defaultProjectId =
@@ -192,9 +195,9 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
           ) : null}
         </DialogHeader>
 
-        <div className="triage-composer-shell">
+        <div className="triage-composer-shell" ref={composerRef}>
           <NewThreadComposer
-            key={task?.id ?? "create"}
+            key={task ? `${task.id}-${editSession}` : "create"}
             defaultProjectId={defaultProjectId}
             defaultProviderId={savedRequest?.providerId ?? task?.providerId}
             defaultModel={savedRequest?.model ?? task?.model}
@@ -205,7 +208,7 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
             initialPrompt={task?.description}
             onSubmit={submit}
             placeholder="Describe the work and what done looks like"
-            draftKey={task ? "triage-edit-task-" + task.id : "triage-create-task"}
+            draftKey={task ? "triage-edit-task-" + task.id + "-" + editSession : "triage-create-task"}
             layout="document"
           />
         </div>
@@ -223,23 +226,6 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
               placeholder="Taken from the prompt when left blank"
             />
           </Field>
-          {editing ? (
-            <Field>
-              <FieldLabel>Stage</FieldLabel>
-              <Select value={stageId} onValueChange={setStageId}>
-                <SelectTrigger aria-label="Stage">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {props.stages.map((stage) => (
-                    <SelectItem key={stage.id} value={stage.id}>
-                      {stage.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          ) : null}
           <Field>
             <FieldLabel>Start</FieldLabel>
             {started ? (
@@ -257,6 +243,25 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
             )}
           </Field>
         </div>
+        {editing ? (
+          <div className="flex justify-end gap-2">
+            <Button
+              disabled={saving}
+              onClick={() => {
+                // Activate the native submit control so the host resolves the
+                // current prompt, attachments, and execution selections together.
+                const submitButton = composerRef.current?.querySelector<HTMLButtonElement>('button[type="submit"]');
+                if (!submitButton || submitButton.disabled) {
+                  toast.error("Complete the prompt and execution selections before saving");
+                  return;
+                }
+                submitButton.click();
+              }}
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

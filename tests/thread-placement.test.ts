@@ -281,3 +281,50 @@ test("reload discards queued sidebar writes from the disposed plugin", async () 
     assert.equal(writes, 1);
   } finally { release(); await harness.lifecycle.dispose(); }
 });
+
+test("editing persists the prompt and schedule across reload and runs the updated request", async () => {
+  let { harness, thread } = await setup();
+  try {
+    const request = {
+      projectId: "project-1", providerId: "codex", model: "test-model", reasoningLevel: "none",
+      permissionMode: "auto", executionInputSources: {},
+      environment: { type: "reuse", environmentId: "environment-1" },
+      input: [{ type: "text", text: "Original prompt" }],
+    };
+    const created = await harness.behavior.callRpc("createTask", {
+      title: "Editable task", description: "Original prompt", stageId: "stage-todo",
+      scheduledAt: null, runNow: false, request,
+    }) as { number: number };
+    const scheduledAt = Date.now() + 3_600_000;
+    const changes = {
+      number: created.number, title: "Edited task", description: "Updated prompt",
+      stageId: "stage-todo", scheduledAt,
+      request: { ...request, input: [{ type: "text", text: "Updated prompt" }] },
+    };
+    const updated = await harness.behavior.callRpc("updateTask", changes) as {
+      description: string; scheduledAt: number | null; runState: string;
+    };
+    assert.equal(updated.description, "Updated prompt");
+    assert.equal(updated.scheduledAt, scheduledAt);
+    assert.equal(updated.runState, "scheduled");
+    ({ harness } = await harness.lifecycle.reload(plugin));
+    harness.inspection.sdk.stub("projects.list", async () => []);
+    harness.inspection.sdk.stub("hosts.list", async () => []);
+    const snapshot = await harness.behavior.callRpc("snapshot", null) as {
+      tasks: { description: string; scheduledAt: number | null }[];
+    };
+    assert.equal(snapshot.tasks[0]!.description, "Updated prompt");
+    assert.equal(snapshot.tasks[0]!.scheduledAt, scheduledAt);
+    const manual = await harness.behavior.callRpc("updateTask", { ...changes, scheduledAt: null }) as {
+      scheduledAt: number | null; runState: string;
+    };
+    assert.equal(manual.scheduledAt, null);
+    assert.equal(manual.runState, "queued");
+    harness.inspection.sdk.stub("threads.spawn", async (args: { input: { type: string; text?: string; visibility?: string }[] }) => {
+      assert.deepEqual(args.input.filter((part) => part.visibility !== "agent-only"), [{ type: "text", text: "Updated prompt" }]);
+      return thread;
+    });
+    await harness.behavior.callRpc("runTask", { number: created.number });
+    assert.equal(harness.inspection.sdk.callsTo("threads.spawn").length, 1);
+  } finally { await harness.lifecycle.dispose(); }
+});
