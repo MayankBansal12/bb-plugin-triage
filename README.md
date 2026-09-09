@@ -9,15 +9,15 @@ to follow the work.
 
 Track tasks across stages, projects, and machines.
 
-![Triage board with task cards grouped by workflow stage](docs/screenshots/triage-board.png)
+![Triage board with task cards grouped by workflow stage](https://github.com/user-attachments/assets/ccc76352-f56e-4e86-9bab-c9ac229e1c33)
 
 Create a task with BB's agent controls and choose when it starts.
 
-![New task dialog with agent configuration and start controls](docs/screenshots/triage-new-task.png)
+![New task dialog with agent configuration and start controls](https://github.com/user-attachments/assets/02fe89a8-c63c-4fa3-a91b-cefdd29df095)
 
 Review recent updates and find work that needs your attention.
 
-![Updates panel with recent task activity and attention filters](docs/screenshots/triage-notification.png)
+![Updates panel with recent task activity and attention filters](https://github.com/user-attachments/assets/ecc281cd-2627-4457-b986-9efcde96b989)
 
 ## Requirements
 
@@ -38,8 +38,7 @@ Once this repository is public, install the current main branch with:
 bb plugin install git:https://github.com/MayankBansal12/bb-plugin-triage.git@main
 ```
 
-This tracks development on `main`. A tagged release and marketplace listing are
-tracked in [release readiness](RELEASE_READINESS.md).
+This tracks development on `main`.
 
 ## Development
 
@@ -104,9 +103,6 @@ New cards start in To Do. Agent execution moves them to In Progress; agents are
 instructed to explicitly report completion or a need for attention. Ending a turn
 alone does not mark work complete. Scheduled tasks require BB and Triage to be
 running; overdue work is picked up when the scheduler resumes.
-
-See [release readiness](RELEASE_READINESS.md) for the remaining public-distribution
-steps. This repository does not yet claim a published marketplace listing.
 
 ## License
 
