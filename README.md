@@ -1,13 +1,50 @@
 # Triage for BB
 
-Triage is a visual workflow board for BB agent work. It creates GitHub-style
-`Triage #42` cards, schedules them, assigns the full native BB execution
-configuration, and lets assigned agents move their own cards between stages.
+Keep agent tasks, progress, and work that needs your attention in one board.
+Run tasks now or schedule them for later, organize them into configurable stages,
+and turn existing BB sessions into cards. Open each card's linked conversation
+to follow the work.
+
+## Screenshots
+
+Track tasks across stages, projects, and machines.
+
+![Triage board with task cards grouped by workflow stage](docs/screenshots/triage-board.png)
+
+Create a task with BB's agent controls and choose when it starts.
+
+![New task dialog with agent configuration and start controls](docs/screenshots/triage-new-task.png)
+
+Review recent updates and find work that needs your attention.
+
+![Updates panel with recent task activity and attention filters](docs/screenshots/triage-notification.png)
+
+## Requirements
+
+- BB 0.42+ with a compatible Plugin SDK 0.4.47 runtime.
+- A configured agent provider. Provider accounts and usage charges still apply.
+- BB and Triage must be running for scheduled work to start. Overdue tasks are
+  picked up when the scheduler resumes.
+
+Triage stores cards and update history in BB's plugin-owned SQLite database.
+It does not require a separate Triage account or external task service.
+Browser notifications require your permission.
+
+## Install from Git
+
+Once this repository is public, install the current main branch with:
+
+```sh
+bb plugin install git:https://github.com/MayankBansal12/bb-plugin-triage.git@main
+```
+
+This tracks development on `main`. A tagged release and marketplace listing are
+tracked in [release readiness](RELEASE_READINESS.md).
 
 ## Development
 
 ```sh
-npm install
+npm ci
 bb plugin install .
 bb plugin dev
 ```
@@ -69,4 +106,8 @@ alone does not mark work complete. Scheduled tasks require BB and Triage to be
 running; overdue work is picked up when the scheduler resumes.
 
 See [release readiness](RELEASE_READINESS.md) for the remaining public-distribution
-steps. No marketplace entry or release is created by this branch.
+steps. This repository does not yet claim a published marketplace listing.
+
+## License
+
+[MIT](LICENSE) © 2026 Mayank Bansal.
