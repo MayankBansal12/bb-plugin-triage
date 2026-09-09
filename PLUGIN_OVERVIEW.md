@@ -1,4 +1,4 @@
-## Keep agent work in view
+## Plan the work
 
 Turn work into Triage cards, choose a project and agent, and run it immediately,
 schedule it for later, or keep it on the board until you are ready. Each card
@@ -12,8 +12,9 @@ opens its linked BB conversation so you can follow the work without losing conte
 - Running, unread, and settled views for keeping the board manageable.
 - Separate, default-off preferences for sidebar cards and linked sessions.
 
-Assigned agents use `triage_move_task` to report progress, completion, or a need
-for human attention. You can also inspect and move cards with `bb triage list`,
+See which tasks are running, which have unread updates, and which need your
+attention. Assigned agents report progress, completion, or a need for help with
+`triage_move_task`. You can also inspect and move cards with `bb triage list`,
 `bb triage show`, `bb triage move`, and `bb triage stages`.
 
 ## Requirements and storage

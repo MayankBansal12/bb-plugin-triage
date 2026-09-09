@@ -8,7 +8,7 @@
   },
   "bb": {
     "name": "Triage",
-    "description": "Visualize, schedule, and assign BB agent work across configurable workflow stages.",
+    "description": "Keep agent tasks, progress, and work that needs your attention in one board.",
     "branding": {
       "icon": "ListTodo"
     },
@@ -50,5 +50,15 @@
     "build": "bb plugin build",
     "test": "tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "author": "Mayank Bansal",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MayankBansal12/bb-plugin-triage.git"
+  },
+  "homepage": "https://github.com/MayankBansal12/bb-plugin-triage#readme",
+  "bugs": {
+    "url": "https://github.com/MayankBansal12/bb-plugin-triage/issues"
   }
 }
