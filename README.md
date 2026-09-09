@@ -32,7 +32,7 @@ Browser notifications require your permission.
 
 ## Install from Git
 
-Once this repository is public, install the current main branch with:
+Install the current main branch with:
 
 ```sh
 bb plugin install git:https://github.com/MayankBansal12/bb-plugin-triage.git@main

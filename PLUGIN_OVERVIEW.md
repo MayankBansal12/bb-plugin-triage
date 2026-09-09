@@ -1,26 +1,24 @@
-## Plan the work
+## Plan and run
 
-Turn work into Triage cards, choose a project and agent, and run it immediately,
-schedule it for later, or keep it on the board until you are ready. Each card
-opens its linked BB conversation so you can follow the work without losing context.
+Create a task, choose its project and agent, and run it now or schedule it for
+later. Turn an existing session into a card without starting another agent.
+Each card opens its linked conversation.
 
-## What you get
+## Follow the work
 
-- A workflow board with configurable stage names and ordering.
-- Existing sessions can become cards without starting another agent.
-- Task titles, project and branch details, and agent identity in cards and updates.
-- Running, unread, and settled views for keeping the board manageable.
-- Separate, default-off preferences for sidebar cards and linked sessions.
+- Organize cards into stages you can rename and reorder.
+- Filter running tasks, unread updates, and settled work.
+- See recent activity and tasks that need your attention.
+- Optionally show cards and linked sessions in the sidebar.
 
-See which tasks are running, which have unread updates, and which need your
-attention. Assigned agents report progress, completion, or a need for help with
-`triage_move_task`. You can also inspect and move cards with `bb triage list`,
-`bb triage show`, `bb triage move`, and `bb triage stages`.
+Assigned agents report progress and completion through `triage_move_task`.
+Use `bb triage list`, `bb triage show`, and `bb triage move` from the CLI.
 
-## Requirements and storage
+## Requirements
 
-Requires BB 0.42 or later with a compatible Plugin SDK 0.4.47 runtime and a
-configured agent provider. Provider accounts and usage charges still apply.
-Triage stores its board and update history in BB's plugin-owned SQLite database.
-Scheduled tasks run while BB and the plugin are running; overdue tasks are picked
-up when the scheduler resumes. Browser notifications require your permission.
+Requires BB 0.42+ with a compatible Plugin SDK 0.4.47 runtime and a configured
+agent provider. Provider accounts and usage charges apply. No separate Triage
+account is needed. Cards and updates stay in BB's plugin-owned SQLite database.
+
+Scheduled work runs while BB and Triage are running; overdue tasks are picked
+up when they resume. Browser notifications require permission.
