@@ -92,6 +92,11 @@ export function presentRunState(task: Task): RunPresentation {
   }
 }
 
+/** Queued and scheduled work has no agent update to read yet. */
+export function supportsTaskRead(task: Pick<Task, "runState">): boolean {
+  return task.runState !== "queued" && task.runState !== "scheduled";
+}
+
 export function isTaskRunning(task: Task): boolean {
   return task.runState === "dispatching" || task.runState === "starting" || task.runState === "working";
 }

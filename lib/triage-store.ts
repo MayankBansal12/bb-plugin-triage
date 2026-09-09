@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { useRpc, type PluginRpcClient } from "@bb/plugin-sdk/app";
+import { useRpc, type PluginRpcClient } from "@get-bb/plugin-sdk/app";
 
 import type { rpcContract } from "../server";
 import type { AgentOptions, Snapshot } from "./triage-types";

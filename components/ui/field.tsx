@@ -16,7 +16,7 @@ function FieldLabel({
   return (
     <label className={cn("bb-field-label", className)} {...props}>
       {children}
-      {optional ? <span className="bb-field-optional">Optional</span> : null}
+      {optional ? <span className="bb-field-optional">(Optional)</span> : null}
     </label>
   );
 }

@@ -5,8 +5,9 @@ import {
   useRealtime,
   useSettings,
   type PluginThreadListProps,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 
+import { ThreadTriageAction } from "./thread-triage-action";
 import { Icon } from "@/components/ui/icon";
 import { StatusDot } from "@/components/ui/status-dot";
 import {
@@ -181,6 +182,7 @@ function SidebarThreadList({
   return (
     <>
       {values?.showInSidebar === true ? <TriageSidebarSection {...props} /> : null}
+      {props.activeThreadId ? <ThreadTriageAction key={props.activeThreadId} threadId={props.activeThreadId} sidebar /> : null}
       <Original />
     </>
   );
