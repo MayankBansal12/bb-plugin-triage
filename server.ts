@@ -1,4 +1,4 @@
-import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const stageSchema = z.object({
@@ -59,6 +59,7 @@ const taskSchema = z.object({
   request: newThreadRequestSchema.nullable(),
   scheduledAt: z.number().int().nullable(),
   threadId: z.string().nullable(),
+  sidebarVisible: z.boolean().nullable().default(null),
   runState: z.enum([
     "queued",
     "scheduled",
@@ -90,6 +91,7 @@ const notificationSchema = z.object({
 });
 
 const projectOptionSchema = z.object({
+  defaultMachineId: z.string().nullable(),
   id: z.string(),
   kind: z.enum(["personal", "standard"]),
   name: z.string(),
@@ -129,6 +131,18 @@ export const rpcContract = defineRpcContract({
       unreadCount: z.number().int().nonnegative(),
     }),
   },
+  importThread: {
+    input: z.object({ threadId: z.string().min(1) }).strict(),
+    output: taskSchema,
+  },
+  setShowInSidebar: {
+    input: z.object({ visible: z.boolean() }).strict(),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  setThreadSidebar: {
+    input: z.object({ number: z.number().int().positive(), visible: z.boolean() }).strict(),
+    output: z.object({ ok: z.literal(true) }),
+  },
   createTask: {
     input: z
       .object({
@@ -150,6 +164,10 @@ export const rpcContract = defineRpcContract({
         summary: z.string().max(2_000).optional(),
       })
       .strict(),
+    output: taskSchema,
+  },
+  renameTask: {
+    input: z.object({ number: z.number().int().positive(), title: z.string().trim().min(1).max(160) }).strict(),
     output: taskSchema,
   },
   updateTask: {
@@ -208,7 +226,7 @@ export const rpcContract = defineRpcContract({
   },
   reorderStage: {
     input: z
-      .object({ id: z.string().min(1), direction: z.enum(["left", "right"]) })
+      .object({ id: z.string().min(1), direction: z.enum(["left", "right"]).optional(), targetId: z.string().min(1).optional() })
       .strict(),
     output: z.object({ stages: z.array(stageSchema) }),
   },
@@ -441,9 +459,14 @@ export default async function plugin(bb: BbPluginApi) {
   const db = bb.storage.database();
   bb.storage.migrate(db, migrations);
 
-  // Read by the frontend's thread-list slot. Declaring it here is what puts the
-  // switch on the plugin's page in Tools; the board itself never reads it.
-  bb.settings.define({
+  // Cards and native sessions are separate sidebar preferences.
+  const settings = bb.settings.define({
+    showThreadsInSidebar: {
+      type: "boolean",
+      label: "Show Triage sessions in the sidebar",
+      description: "Show linked sessions in the regular sidebar list. Changing this applies to all existing Triage sessions; individual sessions can also be shown or hidden from their Triage menu.",
+      default: false,
+    },
     showInSidebar: {
       type: "boolean",
       label: "Show Triage in the sidebar",
@@ -451,6 +474,44 @@ export default async function plugin(bb: BbPluginApi) {
         "List your Triage cards above the threads in BB's sidebar, ordered by what needs you first.",
       default: false,
     },
+  });
+
+  let showThreadsInSidebar = (await settings.get()).showThreadsInSidebar;
+  const pendingVisibility = new Map<string, { visible: boolean }>();
+  let disposed = false;
+  bb.onDispose(() => { disposed = true; pendingVisibility.clear(); });
+  let sidebarWrites: Promise<unknown> = Promise.resolve();
+  const applySidebarVisibility = (threadId: string, change: { visible: boolean }) => {
+    const operation = sidebarWrites.then(async () => {
+      if (disposed || pendingVisibility.get(threadId) !== change) return;
+      await bb.sdk.threads.update({ threadId, visibility: change.visible ? "visible" : "hidden" });
+      if (disposed) return;
+      if (pendingVisibility.get(threadId) === change) pendingVisibility.delete(threadId);
+      publish();
+    });
+    sidebarWrites = operation.catch(() => {});
+    return operation;
+  };
+  const setSidebarVisibility = (threadId: string, visible: boolean) => {
+    const change = { visible };
+    pendingVisibility.set(threadId, change);
+    return applySidebarVisibility(threadId, change);
+  };
+  const syncSidebarVisibility = async () => {
+    for (const [threadId, change] of pendingVisibility) {
+      try {
+        await applySidebarVisibility(threadId, change);
+      } catch (error) {
+        if (!disposed) bb.log.warn(`Could not update sidebar visibility: ${errorMessage(error)}`);
+      }
+    }
+  };
+  settings.onChange((next, prev) => {
+    showThreadsInSidebar = next.showThreadsInSidebar;
+    if (next.showThreadsInSidebar === prev.showThreadsInSidebar) return;
+    const rows = db.prepare("SELECT thread_id FROM triage_tasks WHERE thread_id IS NOT NULL").all() as { thread_id: string }[];
+    for (const row of rows) pendingVisibility.set(row.thread_id, { visible: showThreadsInSidebar });
+    void syncSidebarVisibility();
   });
 
   const listStages = () =>
@@ -604,6 +665,18 @@ export default async function plugin(bb: BbPluginApi) {
     }
   };
 
+  const stageInstructions = () => {
+    const intake = getSystemStage("intake").name;
+    const active = getSystemStage("active").name;
+    const attention = getSystemStage("attention").name;
+    const done = getSystemStage("done").name;
+    return `Available stages: ${listStages().map((stage) => stage.name).join(", ")}. ` +
+      `Keep the card's stage accurate using triage_move_task. ${intake} means work has not started; use ${active} while working, including when resuming a completed task for new requests. ` +
+      `Before your final response, call triage_move_task with ${done} when the requested scope is satisfied, relevant verification passed, and no required work remains. Do not leave finished work in ${intake} or ${active}. ` +
+      `Use ${attention} when a person must approve, decide, provide access, or interpret incomplete verification. Explain what is needed in the summary. ` +
+      `A turn ending does not by itself mean the task is complete. For a user-created stage, use it only when its name unambiguously matches the work state; otherwise use ${attention} and explain why.`;
+  };
+
   const dispatchTask = async (number: number, throwOnFailure: boolean) => {
     const current = getTaskRow(number);
     if (current.thread_id) return toTask(current);
@@ -616,9 +689,6 @@ export default async function plugin(bb: BbPluginApi) {
 
     try {
       const request = newThreadRequestSchema.parse(JSON.parse(current.request_json));
-      const stages = listStages().map((stage) => stage.name).join(", ");
-      const reviewStage = getSystemStage("attention");
-      const doneStage = getSystemStage("done");
       // Older composer builds persisted visible text as `visibility: "user"`.
       // The thread API represents visible input by omitting visibility and only
       // accepts the explicit value `agent-only`, so normalize stored requests
@@ -634,11 +704,7 @@ export default async function plugin(bb: BbPluginApi) {
           type: "text" as const,
           visibility: "agent-only" as const,
           text:
-            `You are assigned to Triage #${number}. The available stages are: ${stages}. ` +
-            `Move the card with the triage_move_task tool when the work meaningfully changes stage. ` +
-            `Use ${reviewStage.name} when a person must approve, decide, provide access, or interpret incomplete verification. ` +
-            `Use ${doneStage.name} only when the requested scope is satisfied, relevant verification passed, and no required work remains. ` +
-            `For a user-created stage, move there only when its name unambiguously matches the work state; otherwise use ${reviewStage.name} and explain why.`,
+            `You are assigned to Triage #${number}. ${stageInstructions()}`,
           mentions: [],
         },
       ];
@@ -647,7 +713,7 @@ export default async function plugin(bb: BbPluginApi) {
         ...request,
         input,
         title: `Triage #${number}: ${current.title}`,
-        visibility: "hidden" as const,
+        visibility: showThreadsInSidebar ? "visible" as const : "hidden" as const,
       } as SpawnArgs;
       const thread = await bb.sdk.threads.spawn(spawnArgs);
       const activeStage = getSystemStage("active");
@@ -692,7 +758,11 @@ export default async function plugin(bb: BbPluginApi) {
         if (left.kind === right.kind) return 0;
         return left.kind === "personal" ? -1 : 1;
       })
-      .map((project) => ({ id: project.id, kind: project.kind, name: project.name }));
+      .map((project) => ({
+        id: project.id, kind: project.kind,
+        name: project.kind === "personal" ? "Personal" : project.name,
+        defaultMachineId: project.sources?.find((source) => source.isDefault)?.hostId ?? null,
+      }));
     const machines = machineRows.map((machine) => ({
       id: machine.id,
       name: machine.name,
@@ -708,7 +778,32 @@ export default async function plugin(bb: BbPluginApi) {
         count: number;
       }
     ).count;
-    return { stages: listStages(), tasks: listTasks(), projects, machines, notifications, unreadCount };
+    const environments = new Map<string, ReturnType<typeof bb.sdk.environments.get>>();
+    const tasks = await Promise.all(listTasks().map(async (task) => {
+      const thread = task.threadId
+        ? await bb.sdk.threads.get({ threadId: task.threadId }).catch(() => null)
+        : null;
+      const requestEnvironment = task.request?.environment;
+      const environmentId = thread?.environmentId ??
+        (requestEnvironment?.type === "reuse" && typeof requestEnvironment.environmentId === "string"
+          ? requestEnvironment.environmentId : null);
+      let branchName = task.branchName;
+      if (environmentId) {
+        try {
+          let pending = environments.get(environmentId);
+          if (!pending) {
+            pending = bb.sdk.environments.get({ environmentId });
+            environments.set(environmentId, pending);
+          }
+          const environment = await pending;
+          branchName = environment.branchName || (environment.isGitRepo ? "Detached HEAD" : "No branch");
+        } catch {
+          // Keep the saved workspace description when the host is unavailable.
+        }
+      }
+      return { ...task, branchName, sidebarVisible: thread ? thread.visibility === "visible" : null };
+    }));
+    return { stages: listStages(), tasks, projects, machines, notifications, unreadCount };
   };
 
   /**
@@ -763,6 +858,64 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(rpcContract, {
     snapshot: () => snapshot(),
     agentOptions: () => agentOptions(),
+    async importThread({ threadId }) {
+      const thread = await bb.sdk.threads.get({ threadId });
+      if (thread.deletedAt !== null || thread.archivedAt !== null) {
+        throw new Error("Open an unarchived session before moving it to Triage");
+      }
+      const existing = getTaskByThread(threadId);
+      if (existing) {
+        await setSidebarVisibility(threadId, false);
+        publish();
+        return toTask(existing);
+      }
+      const project = await bb.sdk.projects.get({ projectId: thread.projectId });
+      const execution = await bb.sdk.threads.defaultExecutionOptions({ threadId });
+      const machine = await resolveMachine({ type: "reuse", environmentId: thread.environmentId });
+      // The unique thread_id plus this synchronous transaction makes retries and
+      // concurrent imports converge on one card and one ticket number.
+      const task = db.transaction(() => {
+        const duplicate = getTaskByThread(threadId);
+        if (duplicate) return duplicate;
+        const { value: number } = db.prepare(
+          "SELECT value FROM triage_meta WHERE key = 'next_task_number'",
+        ).get() as { value: number };
+        const now = Date.now();
+        const active = thread.status === "active" || thread.status === "starting";
+        const stage = getSystemStage(active ? "active" : "intake");
+        db.prepare(`INSERT INTO triage_tasks (
+          id, number, title, description, stage_id, project_id, project_name,
+          machine_id, machine_name, provider_id, model, request_json,
+          thread_id, run_state, created_at, updated_at
+        ) VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, 'null', ?, ?, ?, ?)`).run(
+          crypto.randomUUID(), number,
+          (thread.title || thread.titleFallback || "Untitled session").slice(0, 160),
+          stage.id, thread.projectId, project.name, machine.machineId, machine.machineName,
+          thread.providerId, execution?.model ?? "Default model", threadId,
+          active ? "working" : thread.status === "error" ? "failed" : "idle", now, now,
+        );
+        db.prepare("UPDATE triage_meta SET value = value + 1 WHERE key = 'next_task_number'").run();
+        const created = getTaskRow(number);
+        addEvent(created.id, "user", "moved session to triage");
+        return created;
+      })();
+      // Persist the card before hiding its session so a failed host update
+      // leaves the conversation accessible; retry uses the existing card.
+      publish();
+      await setSidebarVisibility(threadId, false);
+      return toTask(task);
+    },
+    async setShowInSidebar({ visible }) {
+      await settings.experimental_set({ showInSidebar: visible });
+      return { ok: true as const };
+    },
+    async setThreadSidebar({ number, visible }) {
+      const task = getTaskRow(number);
+      if (!task.thread_id) throw new Error("Start this task before showing its session in the sidebar");
+      await setSidebarVisibility(task.thread_id, visible);
+      publish();
+      return { ok: true as const };
+    },
     async createTask(input) {
       getStageRow(input.stageId);
       const project = await bb.sdk.projects.get({ projectId: input.request.projectId });
@@ -936,6 +1089,16 @@ export default async function plugin(bb: BbPluginApi) {
       publish();
       return toTask(getTaskRow(input.number));
     },
+    async renameTask({ number, title }) {
+      const task = getTaskRow(number);
+      if (task.thread_id) {
+        await bb.sdk.threads.update({ threadId: task.thread_id, title: `Triage #${number}: ${title}` });
+      }
+      db.prepare("UPDATE triage_tasks SET title = ?, updated_at = ? WHERE id = ?").run(title, Date.now(), task.id);
+      addEvent(task.id, "user", "renamed task");
+      publish();
+      return toTask(getTaskRow(number));
+    },
     runTask: ({ number }) => dispatchTask(number, true),
     async stopTask({ number }) {
       const task = getTaskRow(number);
@@ -953,6 +1116,7 @@ export default async function plugin(bb: BbPluginApi) {
     },
     deleteTask({ number }) {
       const task = getTaskRow(number);
+      if (task.thread_id) pendingVisibility.delete(task.thread_id);
       db.transaction(() => {
         // Keep deletion correct even if a host has SQLite foreign keys disabled.
         db.prepare("DELETE FROM triage_events WHERE task_id = ?").run(task.id);
@@ -982,9 +1146,23 @@ export default async function plugin(bb: BbPluginApi) {
       publish();
       return toStage(getStageRow(id));
     },
-    reorderStage({ id, direction }) {
+    reorderStage({ id, direction, targetId }) {
       const stages = listStages();
       const index = stages.findIndex((stage) => stage.id === id);
+      if (targetId) {
+        getStageRow(id);
+        getStageRow(targetId);
+        const targetIndex = stages.findIndex((stage) => stage.id === targetId);
+        const [moved] = stages.splice(index, 1);
+        stages.splice(targetIndex, 0, moved!);
+        db.transaction(() => {
+          stages.forEach((stage, position) => db.prepare("UPDATE triage_stages SET position = ? WHERE id = ?").run(-position - 1, stage.id));
+          stages.forEach((stage, position) => db.prepare("UPDATE triage_stages SET position = ? WHERE id = ?").run(position, stage.id));
+        })();
+        publish();
+        return { stages: listStages() };
+      }
+      if (!direction) throw new Error("Provide a direction or target stage");
       const otherIndex = direction === "left" ? index - 1 : index + 1;
       if (index >= 0 && otherIndex >= 0 && otherIndex < stages.length) {
         const first = stages[index]!;
@@ -1045,7 +1223,7 @@ export default async function plugin(bb: BbPluginApi) {
     description:
       "Move the Triage card assigned to this BB thread into another workflow stage and leave a concise handoff summary.",
     instructions:
-      "Use this whenever your assigned Triage work becomes ready for human review, completion, a clearly named custom stage, or needs user attention.",
+      "Keep the assigned card accurate when work starts or resumes. Before the final response, move completed work to the completion stage or work requiring user input to the attention stage, with a concise summary.",
     presentation: {
       label: {
         pending: "Updating the Triage card",
@@ -1076,7 +1254,6 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   bb.agents.configure((context) => {
-    if (context.origin.pluginId !== bb.pluginId) return { tools: [], skills: [] };
     const task = getTaskByThread(context.thread.id);
     if (!task) return { tools: [], skills: [] };
     return {
@@ -1085,7 +1262,7 @@ export default async function plugin(bb: BbPluginApi) {
       instructions:
         `You own Triage #${task.number}: ${task.title}. ` +
         `Current stage: ${getStageRow(task.stage_id).name}. ` +
-        `Available stages: ${listStages().map((stage) => stage.name).join(", ")}.`,
+        stageInstructions(),
     };
   });
 
@@ -1103,7 +1280,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.events.on("thread.idle", ({ thread }) => {
     const task = getTaskByThread(thread.id);
     if (!task) return;
-    if (task.run_state === "stopped") {
+    if (task.run_state === "stopped" || getStageRow(task.stage_id).system_role === "done") {
       publish();
       return;
     }
@@ -1144,6 +1321,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   bb.events.on("thread.deleted", ({ thread }) => {
+    pendingVisibility.delete(thread.id);
     const task = getTaskByThread(thread.id);
     if (!task) return;
     db.prepare(
@@ -1239,12 +1417,17 @@ export default async function plugin(bb: BbPluginApi) {
   bb.background.service("scheduler", {
     async start(signal) {
       while (!signal.aborted) {
+        await syncSidebarVisibility();
+        if (signal.aborted) break;
         const due = db
           .prepare(
             "SELECT number FROM triage_tasks WHERE run_state = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= ? ORDER BY scheduled_at LIMIT 20",
           )
           .all(Date.now()) as Array<{ number: number }>;
-        for (const task of due) await dispatchTask(task.number, false);
+        for (const task of due) {
+          if (signal.aborted) break;
+          await dispatchTask(task.number, false);
+        }
         await sleep(10_000, signal);
       }
     },

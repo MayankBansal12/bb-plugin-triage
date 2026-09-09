@@ -4,7 +4,7 @@ import {
   useBbContext,
   useBbNavigate,
   useRealtime,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,12 @@ import { BoardSkeleton, ToolbarSkeleton } from "@/components/triage/board-skelet
 import { BoardToolbar, type TaskFilter } from "@/components/triage/board-toolbar";
 import { TaskComposerDialog } from "@/components/triage/task-composer-dialog";
 import { TriageHeaderActions } from "@/components/triage/header-actions";
+import { ThreadTriageAction } from "@/components/triage/thread-triage-action";
 import { SidebarThreadList } from "@/components/triage/sidebar-thread-list";
 import { TaskCard } from "@/components/triage/task-card";
 import {
   isTaskRunning,
+  supportsTaskRead,
   stageTone,
 } from "@/lib/triage-format";
 import { claimTriageRefresh, usePendingOpenTaskDetail } from "@/lib/triage-mounts";
@@ -66,7 +68,7 @@ function matchesFilter(task: Task, filter: TaskFilter): boolean {
     case "live":
       return task.settledAt === null && isTaskRunning(task);
     case "unread":
-      return task.settledAt === null && task.readAt === null;
+      return task.settledAt === null && supportsTaskRead(task) && task.readAt === null;
     case "settled":
       return task.settledAt !== null;
     default:
@@ -95,7 +97,7 @@ function TriageBoard() {
     (taskNumber: number) => {
       const task = snapshot?.tasks.find((item) => item.number === taskNumber);
       if (!task) return;
-      if (task.readAt === null) {
+      if (supportsTaskRead(task) && task.readAt === null) {
         patchTaskRead(task.number, true);
         void rpc.call("setTaskRead", { number: task.number, read: true }).then(refresh, refresh);
       }
@@ -117,9 +119,7 @@ function TriageBoard() {
       (task) =>
         (projectFilter === "all" || task.projectId === projectFilter) &&
         (machineFilter === "all" ||
-          (machineFilter === "project-default"
-            ? task.machineId === null
-            : task.machineId === machineFilter)),
+          (task.machineId ?? snapshot.projects.find((project) => project.id === task.projectId)?.defaultMachineId) === machineFilter),
     );
   }, [machineFilter, projectFilter, snapshot]);
 
@@ -127,7 +127,7 @@ function TriageBoard() {
     () => ({
       all: scopedTasks.filter((task) => task.settledAt === null).length,
       live: scopedTasks.filter((task) => task.settledAt === null && isTaskRunning(task)).length,
-      unread: scopedTasks.filter((task) => task.settledAt === null && task.readAt === null).length,
+      unread: scopedTasks.filter((task) => task.settledAt === null && supportsTaskRead(task) && task.readAt === null).length,
       settled: scopedTasks.filter((task) => task.settledAt !== null).length,
     }),
     [scopedTasks],
@@ -201,7 +201,11 @@ function TriageBoard() {
         counts={counts}
         defaultProjectId={defaultProjectId}
         rpc={rpc}
-        onProjectFilterChange={setProjectFilter}
+        onProjectFilterChange={(value) => {
+          setProjectFilter(value);
+          const defaultMachineId = snapshot.projects.find((project) => project.id === value)?.defaultMachineId;
+          setMachineFilter(defaultMachineId && snapshot.machines.some((machine) => machine.id === defaultMachineId) ? defaultMachineId : "all");
+        }}
         onMachineFilterChange={setMachineFilter}
         onTaskFilterChange={setTaskFilter}
         onCreated={refresh}
@@ -249,6 +253,10 @@ function TriageBoard() {
                       stages={snapshot.stages}
                       showMachine={snapshot.machines.length > 1}
                       onOpen={() => openTask(task.number)}
+                      onToggleSidebar={() => void taskAction(
+                        () => rpc.call("setThreadSidebar", { number: task.number, visible: !task.sidebarVisible }),
+                        task.sidebarVisible ? "Session hidden from sidebar" : "Session shown in sidebar",
+                      )}
                       onMove={(stageId) => void move(task, stageId)}
                       onRun={() =>
                         void taskAction(
@@ -317,6 +325,11 @@ function TriageBoard() {
 }
 
 export default definePluginApp((app) => {
+  app.slots.experimental_threadHeaderAction({
+    id: "triage-thread-action",
+    title: "Triage",
+    component: ThreadTriageAction,
+  });
   app.slots.navPanel({
     id: "triage-board",
     title: "Triage",

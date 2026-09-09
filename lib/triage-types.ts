@@ -1,4 +1,4 @@
-import type { NewThreadRequest } from "@bb/plugin-sdk/app";
+import type { NewThreadRequest } from "@get-bb/plugin-sdk/app";
 
 /** Shapes mirrored from the plugin server's RPC contract. */
 
@@ -49,6 +49,7 @@ export interface Task {
   request: NewThreadRequest | null;
   scheduledAt: number | null;
   threadId: string | null;
+  sidebarVisible?: boolean | null;
   runState: RunState;
   attentionReason: string | null;
   readAt: number | null;
@@ -58,6 +59,7 @@ export interface Task {
 }
 
 export interface ProjectOption {
+  defaultMachineId?: string | null;
   id: string;
   kind: "personal" | "standard";
   name: string;

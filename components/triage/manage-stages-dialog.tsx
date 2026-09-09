@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useSettings } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 
 import {
@@ -34,8 +35,19 @@ export interface ManageStagesDialogProps {
   onChanged: () => Promise<void>;
 }
 
-/** Board settings: the columns themselves, their order, and their names. */
+/** Triage settings: the columns themselves, their order, and their names. */
 function ManageStagesDialog({ stages, rpc, onChanged }: ManageStagesDialogProps) {
+  const { values } = useSettings();
+  const [savingSidebar, setSavingSidebar] = React.useState(false);
+  const [drag, setDrag] = React.useState<{ id: string; startY: number; offset: number; index: number; target: number; step: number } | null>(null);
+  const sidebarName = React.useId();
+  const [reordering, setReordering] = React.useState(false);
+  const reorder = async (id: string, targetId: string) => {
+    if (id === targetId || reordering) return;
+    setReordering(true);
+    await handle(() => rpc.call("reorderStage", { id, targetId }));
+    setReordering(false);
+  };
   const [newName, setNewName] = React.useState("");
   const [names, setNames] = React.useState<Record<string, string>>({});
 
@@ -56,21 +68,57 @@ function ManageStagesDialog({ stages, rpc, onChanged }: ManageStagesDialogProps)
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-8" aria-label="Board settings">
+        <Button variant="ghost" size="icon" className="size-8" aria-label="Triage settings">
           <Icon name="Settings" className="size-4" aria-hidden="true" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Board settings</DialogTitle>
+          <DialogTitle>Triage settings</DialogTitle>
           <DialogDescription>
-            Rename and reorder the columns. Core routing stages stay available for scheduling and
-            failures.
+            Rename the columns and drag their handles to reorder them.
           </DialogDescription>
         </DialogHeader>
         <div className="triage-stage-list">
           {stages.map((stage, index) => (
-            <div key={stage.id} className="triage-stage-row">
+            <div key={stage.id} className="triage-stage-row"
+              data-dragging={drag?.id === stage.id ? "" : undefined}
+              style={{ transform: `translateY(${drag ? drag.id === stage.id ? drag.offset : index > drag.index && index <= drag.target ? -drag.step : index < drag.index && index >= drag.target ? drag.step : 0 : 0}px)` }}>
+              <Button variant="ghost" size="icon" className="triage-stage-handle size-8 shrink-0"
+                disabled={reordering}
+                aria-label={`Reorder ${stage.name}`}
+                aria-description="Drag to reorder, or use the up and down arrow keys"
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  const row = event.currentTarget.parentElement!;
+                  const rows = Array.from(row.parentElement!.children);
+                  const step = rows.length > 1
+                    ? rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top
+                    : row.getBoundingClientRect().height + 6;
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setDrag({ id: stage.id, startY: event.clientY, offset: 0, index, target: index, step });
+                }}
+                onPointerMove={(event) => {
+                  if (!drag || drag.id !== stage.id) return;
+                  const offset = Math.max(-drag.index * drag.step, Math.min((stages.length - 1 - drag.index) * drag.step, event.clientY - drag.startY));
+                  setDrag({ ...drag, offset, target: Math.max(0, Math.min(stages.length - 1, drag.index + Math.round(offset / drag.step))) });
+                }}
+                onPointerUp={() => {
+                  if (!drag) return;
+                  if (drag.index !== drag.target) void reorder(drag.id, stages[drag.target].id);
+                  setDrag(null);
+                }}
+                onPointerCancel={() => setDrag(null)}
+                onLostPointerCapture={() => setDrag(null)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") { setDrag(null); return; }
+                  const target = stages[index + (event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0)];
+                  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                  event.preventDefault();
+                  if (target) void reorder(stage.id, target.id);
+                }}>
+                <Icon name="DragDropVertical" className="size-4" aria-hidden="true" />
+              </Button>
               <StatusDot tone={stageTone(stage)} className="shrink-0" />
               <Input
                 value={names[stage.id] ?? stage.name}
@@ -90,35 +138,7 @@ function ManageStagesDialog({ stages, rpc, onChanged }: ManageStagesDialogProps)
                 aria-label={`Stage name ${stage.name}`}
               />
               <div className="flex shrink-0 items-center">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8"
-                  disabled={index === 0}
-                  aria-label={`Move ${stage.name} left`}
-                  onClick={() =>
-                    void handle(() => rpc.call("reorderStage", { id: stage.id, direction: "left" }))
-                  }
-                >
-                  <Icon name="ChevronLeft" className="size-4" aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8"
-                  disabled={index === stages.length - 1}
-                  aria-label={`Move ${stage.name} right`}
-                  onClick={() =>
-                    void handle(() => rpc.call("reorderStage", { id: stage.id, direction: "right" }))
-                  }
-                >
-                  <Icon name="ChevronRight" className="size-4" aria-hidden="true" />
-                </Button>
-                {stage.systemRole ? (
-                  <span className="triage-stage-core" title="Used for automatic routing">
-                    Core
-                  </span>
-                ) : (
+                {!stage.systemRole ? (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
@@ -152,7 +172,7 @@ function ManageStagesDialog({ stages, rpc, onChanged }: ManageStagesDialogProps)
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
-                )}
+                ) : null}
               </div>
             </div>
           ))}
@@ -180,6 +200,23 @@ function ManageStagesDialog({ stages, rpc, onChanged }: ManageStagesDialogProps)
             Add stage
           </Button>
         </form>
+        <div className="triage-sidebar-setting">
+          <label htmlFor={sidebarName}>Show Triage in sidebar</label>
+          <input
+            id={sidebarName}
+            className="triage-sidebar-switch"
+            type="checkbox"
+            role="switch"
+            checked={values?.showInSidebar === true}
+            disabled={!values || savingSidebar}
+            onChange={(event) => {
+              const visible = event.currentTarget.checked;
+              setSavingSidebar(true);
+              void handle(() => rpc.call("setShowInSidebar", { visible }))
+                .finally(() => setSavingSidebar(false));
+            }}
+          />
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { RenameTaskDialog } from "./rename-task-dialog";
 
 import {
   AlertDialog,
@@ -32,6 +33,7 @@ import {
   formatAbsolute,
   formatShortWhen,
   isTaskRunning,
+  supportsTaskRead,
   presentRunState,
   providerLabel,
 } from "@/lib/triage-format";
@@ -43,6 +45,7 @@ export interface TaskCardProps {
   /** True when the board shows more than one machine's work. */
   showMachine: boolean;
   onOpen: () => void;
+  onToggleSidebar: () => void;
   onMove: (stageId: string) => void;
   onRun: () => void;
   onStop: () => void;
@@ -62,6 +65,7 @@ function TaskCard({
   stages,
   showMachine,
   onOpen,
+  onToggleSidebar,
   onMove,
   onRun,
   onStop,
@@ -72,6 +76,9 @@ function TaskCard({
   onDragEnd,
 }: TaskCardProps) {
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
+  const [renaming, setRenaming] = React.useState(false);
+  const hasReadState = supportsTaskRead(task);
+  const showStatus = task.runState !== "idle" && task.runState !== "completed";
   const running = isTaskRunning(task);
   const status = presentRunState(task);
   const brand = agentBrand(task.providerId, task.model);
@@ -82,8 +89,8 @@ function TaskCard({
       <Card
         className="triage-card group"
         data-tone={status.tone}
-        data-unread={task.readAt === null ? "" : undefined}
-        data-read={task.readAt !== null ? "" : undefined}
+        data-unread={hasReadState && task.readAt === null ? "" : undefined}
+        data-read={hasReadState && task.readAt !== null && !running ? "" : undefined}
         draggable
         onDragStart={(event) => {
           event.dataTransfer.effectAllowed = "move";
@@ -134,6 +141,16 @@ function TaskCard({
                   <Icon name={task.threadId ? "MessageSquare" : "Edit"} aria-hidden="true" />
                   {task.threadId ? "Open thread" : "Edit task"}
                 </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => requestAnimationFrame(() => setRenaming(true))}>
+                  <Icon name="Edit" aria-hidden="true" />
+                  Edit title
+                </DropdownMenuItem>
+                {task.threadId ? (
+                  <DropdownMenuItem disabled={task.sidebarVisible == null} onSelect={onToggleSidebar}>
+                    <Icon name="MessageSquare" aria-hidden="true" />
+                    {task.sidebarVisible ? "Hide session from sidebar" : "Show session in sidebar"}
+                  </DropdownMenuItem>
+                ) : null}
                 {!task.threadId ? (
                   <DropdownMenuItem onSelect={onRun}>
                     <Icon name="Play" aria-hidden="true" />
@@ -146,10 +163,12 @@ function TaskCard({
                     Stop agent
                   </DropdownMenuItem>
                 ) : null}
+                {hasReadState ? (
                 <DropdownMenuItem onSelect={() => onSetRead(task.readAt === null)}>
                   <Icon name={task.readAt === null ? "Eye" : "MailOpen"} aria-hidden="true" />
                   {task.readAt === null ? "Mark read" : "Mark unread"}
                 </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem onSelect={() => onSetSettled(!task.settledAt)}>
                   <Icon name={task.settledAt ? "ArchiveRestore" : "Check"} aria-hidden="true" />
                   {task.settledAt ? "Reopen" : "Mark settled"}
@@ -221,12 +240,12 @@ function TaskCard({
         ) : null}
 
         <div className="triage-card-footer">
-          <span className="triage-card-status">
+          {showStatus ? <span className="triage-card-status">
             <StatusDot tone={status.tone} label={status.label} pulse={status.live} />
             <span className="truncate">{status.label}</span>
-          </span>
+          </span> : null}
           <time
-            className="triage-card-time tabular-nums"
+            className="triage-card-time ml-auto tabular-nums"
             dateTime={new Date(stamp).toISOString()}
             title={formatAbsolute(stamp)}
           >
@@ -236,6 +255,7 @@ function TaskCard({
 
       </Card>
 
+      {renaming ? <RenameTaskDialog task={task} open={renaming} onOpenChange={setRenaming} /> : null}
       <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>

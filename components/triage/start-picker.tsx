@@ -127,6 +127,9 @@ function StartPicker({
         </PopoverTrigger>
         <PopoverContent
           align="end"
+          side="top"
+          avoidCollisions={false}
+          collisionPadding={12}
           sideOffset={8}
           className="triage-schedule-popover w-[340px] p-3"
           mobileTitle="Choose a start time"
@@ -142,6 +145,8 @@ function StartPicker({
             <div className="triage-schedule-panel">
               <Calendar
                 mode="single"
+                defaultMonth={scheduledDate}
+                fixedWeeks
                 selected={scheduledDate}
                 onSelect={selectScheduledDay}
                 disabled={{ before: new Date(new Date().setHours(0, 0, 0, 0)) }}
@@ -189,24 +194,7 @@ function StartPicker({
                   </Button>
                 ))}
               </div>
-              <div className="triage-schedule-actions">
-                <span
-                  className={
-                    scheduleInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground"
-                  }
-                  role={scheduleInvalid ? "alert" : undefined}
-                >
-                  {formatStartDistance(mode, scheduledLocal)}
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={scheduleInvalid}
-                  onClick={() => setOpen(false)}
-                >
-                  Done
-                </Button>
-              </div>
+
             </div>
           ) : null}
         </PopoverContent>
@@ -214,8 +202,8 @@ function StartPicker({
       <span
         className={
           scheduleInvalid
-            ? "text-xs font-normal text-destructive"
-            : "text-xs font-normal text-muted-foreground"
+            ? "text-right text-xs font-normal text-destructive"
+            : "text-right text-xs font-normal text-muted-foreground"
         }
       >
         {formatStartDistance(mode, scheduledLocal)}

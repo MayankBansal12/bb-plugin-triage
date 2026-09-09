@@ -2,7 +2,7 @@ import * as React from "react";
 import {
   experimental_NewThreadComposer as NewThreadComposer,
   type NewThreadRequest,
-} from "@bb/plugin-sdk/app";
+} from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -77,7 +77,7 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
   const open = editing ? props.open : createOpen;
   const setOpen = editing ? props.onOpenChange : setCreateOpen;
   const [title, setTitle] = React.useState("");
-  const [stageId, setStageId] = React.useState("");
+  const [editStageId, setStageId] = React.useState("");
   const [startMode, setStartMode] = React.useState<StartMode>("now");
   const [scheduledLocal, setScheduledLocal] = React.useState("");
 
@@ -85,6 +85,7 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
     () => props.stages.find((stage) => stage.systemRole === "intake") ?? props.stages[0],
     [props.stages],
   );
+  const stageId = editing ? editStageId : intakeStage?.id ?? "";
   const started = Boolean(task?.threadId);
   const savedRequest = task?.request ?? null;
 
@@ -98,7 +99,6 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
       return;
     }
     setTitle("");
-    setStageId(intakeStage?.id ?? "");
     setScheduledLocal("");
     setStartMode("now");
   }, [intakeStage?.id, open, task?.id]);
@@ -113,7 +113,7 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
       throw new Error("A task name is required");
     }
     if (!stageId) {
-      toast.error("Choose a stage");
+      toast.error(editing ? "Choose a stage" : "To Do stage is unavailable");
       throw new Error("A stage is required");
     }
 
@@ -223,21 +223,23 @@ function TaskComposerDialog(props: TaskComposerDialogProps) {
               placeholder="Taken from the prompt when left blank"
             />
           </Field>
-          <Field>
-            <FieldLabel>Stage</FieldLabel>
-            <Select value={stageId} onValueChange={setStageId}>
-              <SelectTrigger aria-label="Stage">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {props.stages.map((stage) => (
-                  <SelectItem key={stage.id} value={stage.id}>
-                    {stage.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          {editing ? (
+            <Field>
+              <FieldLabel>Stage</FieldLabel>
+              <Select value={stageId} onValueChange={setStageId}>
+                <SelectTrigger aria-label="Stage">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {props.stages.map((stage) => (
+                    <SelectItem key={stage.id} value={stage.id}>
+                      {stage.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          ) : null}
           <Field>
             <FieldLabel>Start</FieldLabel>
             {started ? (

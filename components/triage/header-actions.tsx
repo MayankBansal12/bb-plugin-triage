@@ -1,4 +1,4 @@
-import { useRealtimeConnectionState } from "@bb/plugin-sdk/app";
+import { useRealtimeConnectionState } from "@get-bb/plugin-sdk/app";
 
 import { StatusDot } from "@/components/ui/status-dot";
 import { requestOpenTask, useTriage } from "@/lib/triage-store";

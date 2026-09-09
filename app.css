@@ -98,14 +98,11 @@
 }
 
 .triage-board {
-  display: grid;
-  /* Columns keep a comfortable width; extra stages scroll horizontally rather
-     than being crumbled to fit. No scroll-snap: proximity snapping on load
-     shifts the board right and clips the leading column. */
+  display: flex;
+  /* Share available width, with readable limits for both sparse and busy boards.
+     Extra stages overflow into the viewport's horizontal scroller. */
   height: 100%;
   min-height: 0;
-  grid-auto-columns: minmax(288px, 320px);
-  grid-auto-flow: column;
   align-items: stretch;
 }
 
@@ -126,7 +123,9 @@
 
 .triage-column {
   display: flex;
-  width: 100%;
+  flex: 1 0 288px;
+  min-width: 0;
+  max-width: 480px;
   min-height: 0;
   flex-direction: column;
   padding: 12px 10px 0;
@@ -409,10 +408,7 @@
   bottom: 3px;
   left: 0;
   border-radius: 6px;
-  background: var(--card);
-  box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--ink) 8%, transparent),
-    0 1px 2px color-mix(in oklab, var(--ink) 10%, transparent);
+  background: color-mix(in srgb, var(--foreground) 16%, var(--background));
   pointer-events: none;
   transition:
     transform 220ms var(--triage-ease-out),
@@ -565,7 +561,7 @@
 }
 
 .triage-notification-panel {
-  width: min(376px, calc(100vw - 24px));
+  width: min(440px, calc(100vw - 24px));
   overflow: hidden;
   padding: 0;
 }
@@ -573,6 +569,7 @@
 /* The panel's first answer to "what is going on": three live tallies that
    double as lenses over the cards behind them. */
 .triage-notification-digest {
+  overflow-x: auto;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -583,7 +580,8 @@
 .triage-notification-lens {
   display: flex;
   min-width: 0;
-  flex: 1 1 0;
+  flex: 1 0 auto;
+  white-space: nowrap;
   align-items: center;
   justify-content: center;
   gap: 5px;
@@ -634,10 +632,10 @@
   align-items: flex-start;
   gap: 9px;
   border: 0;
-  border-bottom: 1px solid var(--triage-line);
+  border-top: 1px solid var(--triage-line);
   background: transparent;
   padding: 10px 14px;
-  color: inherit;
+  color: var(--muted-foreground);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -686,7 +684,7 @@
   position: relative;
   display: grid;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) 38px;
+  grid-template-columns: minmax(0, 1fr) 44px;
   align-items: stretch;
   background: transparent;
   transition: background-color 120ms ease;
@@ -700,7 +698,7 @@
   gap: 9px;
   border: 0;
   background: transparent;
-  padding: 7px 4px 8px 14px;
+  padding: 13px 4px 13px 14px;
   color: inherit;
   font: inherit;
   text-align: left;
@@ -725,7 +723,7 @@
   display: grid;
   min-width: 0;
   place-items: start center;
-  padding: 8px 7px 0 0;
+  padding: 14px 10px 0 0;
 }
 
 .triage-notification-time,
@@ -788,21 +786,20 @@
   }
 }
 
-.triage-notification-row[data-unread] {
-  background: color-mix(in oklch, var(--primary) 5%, transparent);
+.triage-notification-unread-dot {
+  width: 5px;
+  height: 5px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: transparent;
 }
 
-.triage-notification-row[data-unread]::before {
-  content: "";
-  position: absolute;
-  z-index: 1;
-  top: 6px;
-  bottom: 6px;
-  left: 0;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
+.triage-notification-row[data-unread] .triage-notification-unread-dot {
   background: var(--primary);
-  pointer-events: none;
+}
+
+.triage-notification-row + .triage-notification-row {
+  border-top: 1px solid var(--triage-line);
 }
 
 .triage-notification-action {
@@ -814,9 +811,12 @@
 }
 
 .triage-notification-action-text {
+  display: -webkit-box;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.45;
 }
 
 .triage-notification-row:not([data-unread]) .triage-notification-action {
@@ -838,12 +838,55 @@
 
 .triage-notification-target {
   display: block;
-  overflow: hidden;
-  margin-top: 1px;
+  margin-top: 4px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.triage-notification-metadata {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 9px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+}
+
+.triage-notification-meta-item {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 45%;
+  gap: 4px;
+}
+
+.triage-notification-meta-item > span {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.triage-notification-metadata svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.triage-notification-agent {
+  display: inline-flex;
+  align-items: center;
+}
+
+.triage-notification-agent svg {
+  width: 15px;
+  height: 15px;
+}
+
+.triage-notification-number {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Leads the line so truncation eats the title before it eats the state. */
@@ -1046,12 +1089,55 @@
   padding: 6px 6px 6px 10px;
 }
 
-.triage-stage-core {
-  padding-inline: 8px;
-  color: var(--muted-foreground);
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+.triage-stage-handle { cursor: grab; touch-action: none; }
+.triage-stage-handle:active { cursor: grabbing; }
+.triage-stage-row { position: relative; transition: transform 160ms ease; }
+.triage-stage-row[data-dragging] {
+  z-index: 1;
+  transition: none;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 30%);
+}
+.triage-sidebar-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid var(--triage-line);
+  padding-top: 16px;
+  font-size: 14px;
+}
+
+.triage-sidebar-switch {
+  appearance: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--muted);
+  cursor: pointer;
+}
+
+.triage-sidebar-switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--foreground);
+}
+
+.triage-sidebar-switch:checked { background: var(--primary); }
+.triage-sidebar-switch:checked::before { transform: translateX(16px); background: var(--primary-foreground); }
+.triage-sidebar-switch:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.triage-sidebar-switch:disabled { opacity: 0.5; cursor: default; }
+
+@media (prefers-reduced-motion: reduce) {
+  .triage-stage-row { transition: none; }
 }
 
 .triage-composer-shell {
@@ -1070,6 +1156,10 @@
    ------------------------------------------------------------------------ */
 .triage-schedule-popover {
   transform-origin: var(--radix-popover-content-transform-origin);
+  max-height: min(560px, var(--radix-popover-content-available-height, 75dvh));
+  max-width: calc(100vw - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .triage-schedule-panel {
@@ -1173,21 +1263,6 @@
   margin-top: 8px;
 }
 
-.triage-schedule-actions {
-  display: flex;
-  min-height: 40px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 10px;
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-}
-
-.triage-schedule-actions > span {
-  min-width: 0;
-}
-
 /* ---------------------------------------------------------------------------
    Pointer-dependent affordances
 
@@ -1278,8 +1353,9 @@
 }
 
 @media (max-width: 780px) {
-  .triage-board {
-    grid-auto-columns: minmax(260px, 84vw);
+  .triage-column {
+    flex-basis: 260px;
+    max-width: min(480px, 84vw);
   }
 
   .triage-create-meta {
