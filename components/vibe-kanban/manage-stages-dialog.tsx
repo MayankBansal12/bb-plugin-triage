@@ -25,17 +25,17 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { StatusDot } from "@/components/ui/status-dot";
-import { stageTone } from "@/lib/triage-format";
-import type { TriageRpc } from "@/lib/triage-store";
-import type { Stage } from "@/lib/triage-types";
+import { stageTone } from "@/lib/vibe-kanban-format";
+import type { KanbanRpc } from "@/lib/vibe-kanban-store";
+import type { Stage } from "@/lib/vibe-kanban-types";
 
 export interface ManageStagesDialogProps {
   stages: Stage[];
-  rpc: TriageRpc;
+  rpc: KanbanRpc;
   onChanged: () => Promise<void>;
 }
 
-/** Triage settings: the columns themselves, their order, and their names. */
+/** Vibe Kanban settings: the columns themselves, their order, and their names. */
 function ManageStagesDialog({ stages, rpc, onChanged }: ManageStagesDialogProps) {
   const { values } = useSettings();
   const [savingSidebar, setSavingSidebar] = React.useState(false);
@@ -68,23 +68,23 @@ function ManageStagesDialog({ stages, rpc, onChanged }: ManageStagesDialogProps)
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-8" aria-label="Triage settings">
+        <Button variant="ghost" size="icon" className="size-8" aria-label="Vibe Kanban settings">
           <Icon name="Settings" className="size-4" aria-hidden="true" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Triage settings</DialogTitle>
+          <DialogTitle>Vibe Kanban settings</DialogTitle>
           <DialogDescription>
             Rename the columns and drag their handles to reorder them.
           </DialogDescription>
         </DialogHeader>
-        <div className="triage-stage-list">
+        <div className="vibe-kanban-stage-list">
           {stages.map((stage, index) => (
-            <div key={stage.id} className="triage-stage-row"
+            <div key={stage.id} className="vibe-kanban-stage-row"
               data-dragging={drag?.id === stage.id ? "" : undefined}
               style={{ transform: `translateY(${drag ? drag.id === stage.id ? drag.offset : index > drag.index && index <= drag.target ? -drag.step : index < drag.index && index >= drag.target ? drag.step : 0 : 0}px)` }}>
-              <Button variant="ghost" size="icon" className="triage-stage-handle size-8 shrink-0"
+              <Button variant="ghost" size="icon" className="vibe-kanban-stage-handle size-8 shrink-0"
                 disabled={reordering}
                 aria-label={`Reorder ${stage.name}`}
                 aria-description="Drag to reorder, or use the up and down arrow keys"
@@ -178,7 +178,7 @@ function ManageStagesDialog({ stages, rpc, onChanged }: ManageStagesDialogProps)
           ))}
         </div>
         <form
-          className="triage-dialog-footer"
+          className="vibe-kanban-dialog-footer"
           onSubmit={(event) => {
             event.preventDefault();
             const name = newName.trim();
@@ -200,11 +200,11 @@ function ManageStagesDialog({ stages, rpc, onChanged }: ManageStagesDialogProps)
             Add stage
           </Button>
         </form>
-        <div className="triage-sidebar-setting">
-          <label htmlFor={sidebarName}>Show Triage in sidebar</label>
+        <div className="vibe-kanban-sidebar-setting">
+          <label htmlFor={sidebarName}>Show Vibe Kanban in sidebar</label>
           <input
             id={sidebarName}
-            className="triage-sidebar-switch"
+            className="vibe-kanban-sidebar-switch"
             type="checkbox"
             role="switch"
             checked={values?.showInSidebar === true}

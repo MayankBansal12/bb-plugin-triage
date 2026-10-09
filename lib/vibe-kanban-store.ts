@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useRpc, type PluginRpcClient } from "@get-bb/plugin-sdk/app";
 
 import type { rpcContract } from "../server";
-import type { AgentOptions, Snapshot } from "./triage-types";
+import type { AgentOptions, Snapshot } from "./vibe-kanban-types";
 
-export type TriageRpc = PluginRpcClient<typeof rpcContract>;
+export type KanbanRpc = PluginRpcClient<typeof rpcContract>;
 
-interface TriageState {
+interface KanbanState {
   snapshot: Snapshot | null;
   error: string | null;
   loading: boolean;
@@ -17,13 +17,13 @@ interface TriageState {
  * shell, so they cannot share React state. They share this store instead —
  * one fetch, one realtime refresh, two subscribers.
  */
-let state: TriageState = { snapshot: null, error: null, loading: true };
+let state: KanbanState = { snapshot: null, error: null, loading: true };
 let inFlight: Promise<void> | null = null;
 let restaleWhileInFlight = false;
 
 const listeners = new Set<() => void>();
 
-function setState(next: TriageState): void {
+function setState(next: KanbanState): void {
   state = next;
   for (const listener of listeners) listener();
 }
@@ -35,11 +35,11 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-function getState(): TriageState {
+function getState(): KanbanState {
   return state;
 }
 
-export async function refreshTriage(rpc: TriageRpc): Promise<void> {
+export async function refreshKanban(rpc: KanbanRpc): Promise<void> {
   // A realtime event during an in-flight fetch would otherwise resolve against
   // the older response; remember it and fetch once more instead.
   if (inFlight) {
@@ -63,7 +63,7 @@ export async function refreshTriage(rpc: TriageRpc): Promise<void> {
   inFlight = null;
   if (restaleWhileInFlight) {
     restaleWhileInFlight = false;
-    await refreshTriage(rpc);
+    await refreshKanban(rpc);
   }
 }
 
@@ -92,16 +92,16 @@ export function patchTaskRead(taskNumber: number, read: boolean): void {
   ) } });
 }
 
-export interface TriageData extends TriageState {
-  rpc: TriageRpc;
+export interface KanbanData extends KanbanState {
+  rpc: KanbanRpc;
   refresh: () => Promise<void>;
 }
 
 /** Subscribe to the shared snapshot and make sure it has been loaded once. */
-export function useTriage(): TriageData {
+export function useKanban(): KanbanData {
   const rpc = useRpc<typeof rpcContract>();
   const current = useSyncExternalStore(subscribe, getState, getState);
-  const refresh = useCallback(() => refreshTriage(rpc), [rpc]);
+  const refresh = useCallback(() => refreshKanban(rpc), [rpc]);
 
   useEffect(() => {
     void refresh();
@@ -140,7 +140,7 @@ let agentOptionsInFlight: Promise<AgentOptions> | null = null;
  * Provider and model catalogue for the agent picker. Cached for the session —
  * it changes only when a host gains or loses a provider.
  */
-export function loadAgentOptions(rpc: TriageRpc): Promise<AgentOptions> {
+export function loadAgentOptions(rpc: KanbanRpc): Promise<AgentOptions> {
   if (agentOptions) return Promise.resolve(agentOptions);
   agentOptionsInFlight ??= (async () => {
     try {

@@ -4,11 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { useTriage } from "@/lib/triage-store";
-import type { Task } from "@/lib/triage-types";
+import { useKanban } from "@/lib/vibe-kanban-store";
+import type { Task } from "@/lib/vibe-kanban-types";
 
 export function RenameTaskDialog({ task, open, onOpenChange }: { task: Task; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { rpc, refresh } = useTriage();
+  const { rpc, refresh } = useKanban();
   const [title, setTitle] = useState(task.title);
   const [pending, setPending] = useState(false);
   useEffect(() => { if (open) setTitle(task.title); }, [open, task.title]);
@@ -30,8 +30,8 @@ export function RenameTaskDialog({ task, open, onOpenChange }: { task: Task; ope
           } finally { setPending(false); }
         }}>
           <Field>
-            <FieldLabel htmlFor={`triage-title-${task.number}`}>Title</FieldLabel>
-            <Input id={`triage-title-${task.number}`} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} required autoFocus disabled={pending} />
+            <FieldLabel htmlFor={`vibe-kanban-title-${task.number}`}>Title</FieldLabel>
+            <Input id={`vibe-kanban-title-${task.number}`} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} required autoFocus disabled={pending} />
           </Field>
           <Button type="submit" disabled={pending || !title.trim()}>{pending ? "Saving…" : "Save"}</Button>
         </form>

@@ -3,21 +3,21 @@
 
    Declared on :root rather than on the board so portalled surfaces — popovers,
    dialogs, dropdowns — inherit them too. Every value is derived from the host
-   theme, so Triage follows light and dark without a second palette.
+   theme, so Vibe Kanban follows light and dark without a second palette.
    ------------------------------------------------------------------------ */
 :root {
-  --triage-line: color-mix(in oklch, var(--ink) 9%, transparent);
-  --triage-line-strong: color-mix(in oklch, var(--ink) 15%, transparent);
-  --triage-sunken: color-mix(in oklch, var(--ink) 3%, transparent);
-  --triage-dim: color-mix(in oklch, var(--ink) 7%, transparent);
+  --vibe-kanban-line: color-mix(in oklch, var(--ink) 12%, transparent);
+  --vibe-kanban-line-strong: color-mix(in oklch, var(--ink) 15%, transparent);
+  --vibe-kanban-sunken: color-mix(in oklch, var(--ink) 3%, transparent);
+  --vibe-kanban-dim: color-mix(in oklch, var(--ink) 7%, transparent);
   /* Stronger than the built-in curves; entrances need the early punch. */
-  --triage-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --vibe-kanban-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 /* ---------------------------------------------------------------------------
    Shell and toolbar
    ------------------------------------------------------------------------ */
-.triage-shell {
+.vibe-kanban-shell {
   display: flex;
   height: 100%;
   min-height: 0;
@@ -25,7 +25,7 @@
   background: var(--background);
 }
 
-.triage-error {
+.vibe-kanban-error {
   display: flex;
   height: 100%;
   flex-direction: column;
@@ -36,39 +36,64 @@
   text-align: center;
 }
 
-.triage-toolbar {
-  display: flex;
-  align-items: center;
-  /* Wraps rather than letting the filters ride over the scope pickers when
-     the panel is narrower than both groups together. */
-  flex-wrap: wrap;
-  gap: 10px 12px;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--triage-line);
-}
-
-.triage-toolbar-group {
-  display: flex;
+.vibe-kanban-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  container-type: inline-size;
   min-width: 0;
-  flex: 1 1 auto;
+  gap: 10px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--vibe-kanban-line);
+}
+.vibe-kanban-toolbar-main {
+  display: grid;
+  grid-template-columns: minmax(100px, 170px) minmax(90px, 116px) minmax(100px, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
+  min-width: 0;
+  gap: 6px;
 }
-
-/* The trailing group keeps its intrinsic width and drops to its own row
-   instead of shrinking its controls into each other. */
-.triage-toolbar-group.justify-end {
-  flex: 0 0 auto;
-  margin-left: auto;
+.vibe-kanban-project-picker, .vibe-kanban-view-picker { min-width: 0; width: 100%; }
+.vibe-kanban-project-picker { padding-inline: 6px; }
+.vibe-kanban-view-picker { border-color: transparent; background: transparent; box-shadow: none; }
+.vibe-kanban-view-picker > span { display: flex; align-items: center; gap: 8px; }
+.vibe-kanban-view-count { flex-shrink: 0; color: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; }
+.vibe-kanban-filter-button { color: var(--muted-foreground); }
+.vibe-kanban-filter-button[data-active] { color: var(--foreground); background: var(--state-hover); }
+.vibe-kanban-new-task { justify-self: end; }
+.vibe-kanban-search { display: flex; position: relative; min-width: 0; align-items: center; }
+.vibe-kanban-search > svg { position: absolute; left: 9px; color: var(--muted-foreground); pointer-events: none; }
+.vibe-kanban-search input { height: 32px; min-width: 0; width: 100%; padding-left: 28px; padding-right: 26px; }
+.vibe-kanban-search > button { position: absolute; right: 4px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 4px; color: var(--muted-foreground); }
+.vibe-kanban-search > button:hover { background: var(--state-hover); }
+.vibe-kanban-search > button:focus-visible { outline: 2px solid var(--ring); }
+.vibe-kanban-filter-popover { display: grid; gap: 12px; }
+.vibe-kanban-filter-field { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 8px; }
+.vibe-kanban-filter-field > span { color: var(--muted-foreground); font-size: 12px; }
+.vibe-kanban-filter-labels { display: grid; gap: 6px; }
+.vibe-kanban-filter-label { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; }
+.vibe-kanban-filter-label input { accent-color: var(--primary); }
+.vibe-kanban-active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-foreground); }
+.vibe-kanban-active-filters > button { display: flex; max-width: 100%; align-items: center; gap: 5px; padding: 3px 6px; border: 1px solid var(--vibe-kanban-line); border-radius: 5px; overflow-wrap: anywhere; }
+.vibe-kanban-active-filters > button > svg { flex-shrink: 0; }
+.vibe-kanban-active-filters > .vibe-kanban-clear-filters { border-color: transparent; }
+.vibe-kanban-active-filters > button:focus-visible { outline: 2px solid var(--ring); }
+@container (max-width: 580px) {
+  .vibe-kanban-toolbar-main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px 4px; }
+  .vibe-kanban-project-picker { grid-column: 1 / 3; grid-row: 1; justify-self: start; width: auto; max-width: 100%; }
+  .vibe-kanban-new-task { grid-column: 3; grid-row: 1; }
+  .vibe-kanban-view-picker { grid-column: 1; grid-row: 2; }
+  .vibe-kanban-search { grid-column: 2; grid-row: 2; }
+  .vibe-kanban-filter-button { grid-column: 3; grid-row: 2; }
 }
+.vibe-kanban-refresh-error { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--destructive); font-size: 12px; padding: 4px 16px; }
 
-.triage-header-actions {
+.vibe-kanban-header-actions {
   display: flex;
   align-items: center;
   gap: 2px;
 }
 
-.triage-connection {
+.vibe-kanban-connection {
   display: inline-flex;
   height: 28px;
   align-items: center;
@@ -80,7 +105,7 @@
   white-space: nowrap;
 }
 
-.triage-connection:not([data-connected]) {
+.vibe-kanban-connection:not([data-connected]) {
   background: color-mix(in oklch, var(--warning) 12%, transparent);
   color: var(--warning);
 }
@@ -88,7 +113,7 @@
 /* ---------------------------------------------------------------------------
    Board and columns
    ------------------------------------------------------------------------ */
-.triage-board-viewport {
+.vibe-kanban-board-viewport {
   min-height: 0;
   flex: 1;
   overflow-x: auto;
@@ -97,89 +122,91 @@
   scrollbar-gutter: stable;
 }
 
-.triage-board {
+.vibe-kanban-board {
   display: flex;
   /* Share available width, with readable limits for both sparse and busy boards.
      Extra stages overflow into the viewport's horizontal scroller. */
   height: 100%;
   min-height: 0;
   align-items: stretch;
+  gap: 20px;
+  padding: 18px 22px 0;
 }
 
-.triage-board-viewport::-webkit-scrollbar {
+.vibe-kanban-board-viewport::-webkit-scrollbar {
   height: 10px;
 }
 
-.triage-board-viewport::-webkit-scrollbar-track {
+.vibe-kanban-board-viewport::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.triage-board-viewport::-webkit-scrollbar-thumb {
+.vibe-kanban-board-viewport::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
   border-radius: 999px;
   background: color-mix(in oklch, var(--ink) 18%, transparent);
   background-clip: padding-box;
 }
 
-.triage-column {
+.vibe-kanban-column {
   display: flex;
-  flex: 1 0 288px;
+  flex: 1 0 264px;
   min-width: 0;
-  max-width: 480px;
+  max-width: 380px;
   min-height: 0;
   flex-direction: column;
-  padding: 12px 10px 0;
-  border-right: 1px solid var(--triage-line);
+  padding: 0;
+  border-radius: 10px;
   transition: background-color 160ms ease;
 }
 
-.triage-column:last-child {
+.vibe-kanban-column:last-child {
   border-right: 0;
 }
 
-.triage-column[data-dropping] {
+.vibe-kanban-column[data-dropping] {
   background: color-mix(in oklch, var(--primary) 5%, transparent);
 }
 
-.triage-column-header {
+.vibe-kanban-column-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 6px 10px;
+  padding: 0 4px 12px;
 }
 
-.triage-column-name {
+.vibe-kanban-column-name {
   overflow: hidden;
   color: color-mix(in oklch, var(--foreground) 80%, transparent);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 500;
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.triage-column-count {
-  margin-left: auto;
+.vibe-kanban-column-count {
+  margin-left: 0;
   color: var(--muted-foreground);
   font-size: 11px;
   opacity: 0.65;
 }
 
-.triage-column-scroll {
+.vibe-kanban-column-scroll {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   overflow-y: auto;
-  padding-bottom: 40px;
+  padding: 1px 1px 40px;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklch, var(--ink) 18%, transparent) transparent;
 }
 
-.triage-column-empty {
+.vibe-kanban-column-empty {
   border-radius: 12px;
-  border: 1px dashed transparent;
+  border: 1px dashed var(--vibe-kanban-line);
   padding: 26px 12px;
   color: color-mix(in oklch, var(--foreground) 34%, transparent);
   font-size: 11.5px;
@@ -189,7 +216,7 @@
     color 150ms ease;
 }
 
-.triage-column-empty[data-dragging] {
+.vibe-kanban-column-empty[data-dragging] {
   border-color: color-mix(in oklch, var(--primary) 34%, transparent);
   color: color-mix(in oklch, var(--primary) 82%, var(--foreground));
 }
@@ -197,47 +224,45 @@
 /* ---------------------------------------------------------------------------
    Cards
    ------------------------------------------------------------------------ */
-.triage-card {
+.vibe-kanban-card {
   position: relative;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   cursor: grab;
-  border: 1px solid var(--triage-line);
-  border-radius: 12px;
+  border: 1px solid var(--vibe-kanban-line);
+  border-radius: 10px;
   background: var(--card);
-  padding: 11px 12px 12px;
+  padding: 14px;
+  box-shadow: none;
   transition:
     opacity 150ms ease,
     border-color 150ms ease,
     box-shadow 150ms ease,
-    transform 150ms var(--triage-ease-out);
+    transform 150ms var(--vibe-kanban-ease-out);
 }
 
-.triage-card[data-read] { opacity: 0.58; }
-.triage-card[data-unread] { border-color: color-mix(in oklch, var(--primary) 28%, var(--triage-line)); }
-.triage-card[data-unread] .triage-card-title { font-weight: 650; }
+.vibe-kanban-card[data-read] { opacity: 1; }
+.vibe-kanban-card[data-unread] { border-color: color-mix(in oklch, var(--primary) 28%, var(--vibe-kanban-line)); }
+.vibe-kanban-card[data-unread] .vibe-kanban-card-id::after { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--primary); }
 
-.triage-card[data-tone="danger"] {
+.vibe-kanban-card[data-tone="danger"] {
   border-color: color-mix(in oklch, var(--destructive) 26%, transparent);
 }
 
-.triage-card[data-tone="unread"] {
+.vibe-kanban-card[data-tone="unread"] {
   border-color: color-mix(in oklch, var(--primary) 26%, transparent);
 }
 
-.triage-card:active {
-  cursor: grabbing;
-  transform: scale(0.985);
-}
+.vibe-kanban-card:active { cursor: grabbing; }
 
-.triage-card-head {
+.vibe-kanban-card-head {
   display: flex;
   min-width: 0;
   align-items: flex-start;
   gap: 6px;
 }
 
-.triage-card-title {
+.vibe-kanban-card-title {
   display: -webkit-box;
   min-width: 0;
   flex: 1;
@@ -246,9 +271,9 @@
   padding: 0;
   color: var(--foreground);
   font: inherit;
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.38;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
   letter-spacing: -0.005em;
   text-align: left;
   overflow: hidden;
@@ -258,7 +283,7 @@
 
 /* Stretch the title's hit area over the whole card so anywhere is clickable,
    while the action cluster stays above it. */
-.triage-card-title::after {
+.vibe-kanban-card-title::after {
   content: "";
   position: absolute;
   z-index: 1;
@@ -266,50 +291,21 @@
   inset: 0;
 }
 
-.triage-card-title:focus-visible {
+.vibe-kanban-card-title:focus-visible {
   outline: none;
 }
 
-.triage-card-title:focus-visible::after {
+.vibe-kanban-card-title:focus-visible::after {
   outline: 1px solid var(--ring);
   outline-offset: -1px;
 }
 
-.triage-card-meta {
+.vibe-kanban-card-meta {
   display: grid;
   gap: 5px;
 }
 
-.triage-card-meta-line {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted-foreground);
-  font-size: 11px;
-}
-
-.triage-card-meta-line [data-icon] {
-  opacity: 0.7;
-}
-
-/* The agent's brand mark is a logo, not an affordance glyph: it carries the
-   line's meaning, so it keeps full contrast where the field icons recede. */
-.triage-card-meta-line .triage-card-brand {
-  margin-right: -1px;
-  color: color-mix(in oklch, var(--foreground) 80%, transparent);
-  opacity: 1;
-}
-
-.triage-card-meta-sep {
-  width: 1px;
-  height: 10px;
-  flex: 0 0 auto;
-  margin-inline: 1px;
-  background: var(--triage-line-strong);
-}
-
-.triage-card-attention-note {
+.vibe-kanban-card-attention-note {
   display: -webkit-box;
   overflow: hidden;
   border-radius: 8px;
@@ -322,16 +318,15 @@
   -webkit-line-clamp: 2;
 }
 
-.triage-card-footer {
+.vibe-kanban-card-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border-top: 1px solid color-mix(in oklch, var(--ink) 7%, transparent);
-  padding-top: 9px;
+  padding-top: 4px;
 }
 
-.triage-card-status {
+.vibe-kanban-card-status {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -340,17 +335,15 @@
   font-size: 11px;
 }
 
-.triage-card-time {
+.vibe-kanban-card-time {
   flex: 0 0 auto;
   color: var(--muted-foreground);
   font-size: 11px;
   opacity: 0.72;
 }
 
-/* A layout sibling of the title, not an overlay: the space is reserved even
-   while the button is invisible, so hovering never covers the first line and
-   never reflows the card. */
-.triage-card-actions {
+/* Keep the properties menu discoverable without competing with the title. */
+.vibe-kanban-card-actions {
   position: relative;
   z-index: 2;
   display: flex;
@@ -363,7 +356,7 @@
    Skeletons
    ------------------------------------------------------------------------ */
 .bb-skeleton {
-  background: var(--triage-dim);
+  background: var(--vibe-kanban-dim);
   animation: bb-skeleton-pulse 1.8s ease-in-out infinite;
 }
 
@@ -377,7 +370,7 @@
   }
 }
 
-.triage-card-skeleton {
+.vibe-kanban-card-skeleton {
   cursor: default;
   box-shadow: none;
 }
@@ -390,9 +383,9 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  border: 1px solid var(--triage-line);
+  border: 1px solid var(--vibe-kanban-line);
   border-radius: 9px;
-  background: var(--triage-sunken);
+  background: var(--vibe-kanban-sunken);
   padding: 3px;
 }
 
@@ -411,8 +404,8 @@
   background: color-mix(in srgb, var(--foreground) 16%, var(--background));
   pointer-events: none;
   transition:
-    transform 220ms var(--triage-ease-out),
-    width 220ms var(--triage-ease-out);
+    transform 220ms var(--vibe-kanban-ease-out),
+    width 220ms var(--vibe-kanban-ease-out);
 }
 
 .bb-segmented[data-size="sm"] .bb-segmented-indicator {
@@ -442,7 +435,7 @@
   white-space: nowrap;
   transition:
     color 160ms ease,
-    transform 140ms var(--triage-ease-out);
+    transform 140ms var(--vibe-kanban-ease-out);
 }
 
 .bb-segmented[data-size="sm"] .bb-segmented-item {
@@ -497,7 +490,7 @@
 }
 
 .bb-status-dot[data-tone="ongoing"][data-pulse] {
-  animation: bb-status-pulse 1.9s var(--triage-ease-out) infinite;
+  animation: bb-status-pulse 1.9s var(--vibe-kanban-ease-out) infinite;
 }
 
 @keyframes bb-status-pulse {
@@ -535,12 +528,12 @@
 /* ---------------------------------------------------------------------------
    Notifications
    ------------------------------------------------------------------------ */
-.triage-notification-icon {
+.vibe-kanban-notification-icon {
   position: relative;
   display: inline-flex;
 }
 
-.triage-notification-badge {
+.vibe-kanban-notification-badge {
   position: absolute;
   z-index: 1;
   top: -6px;
@@ -560,7 +553,7 @@
   pointer-events: none;
 }
 
-.triage-notification-panel {
+.vibe-kanban-notification-panel {
   width: min(440px, calc(100vw - 24px));
   overflow: hidden;
   padding: 0;
@@ -568,16 +561,16 @@
 
 /* The panel's first answer to "what is going on": three live tallies that
    double as lenses over the cards behind them. */
-.triage-notification-digest {
+.vibe-kanban-notification-digest {
   overflow-x: auto;
   display: flex;
   align-items: center;
   gap: 4px;
-  border-bottom: 1px solid var(--triage-line);
+  border-bottom: 1px solid var(--vibe-kanban-line);
   padding: 7px 10px;
 }
 
-.triage-notification-lens {
+.vibe-kanban-notification-lens {
   display: flex;
   min-width: 0;
   flex: 1 0 auto;
@@ -587,7 +580,7 @@
   gap: 5px;
   border: 1px solid transparent;
   border-radius: 8px;
-  background: var(--triage-sunken);
+  background: var(--vibe-kanban-sunken);
   padding: 5px 7px;
   color: var(--muted-foreground);
   font: inherit;
@@ -599,40 +592,40 @@
     color 120ms ease;
 }
 
-.triage-notification-lens:disabled {
+.vibe-kanban-notification-lens:disabled {
   cursor: default;
   opacity: 0.52;
 }
 
-.triage-notification-lens[data-state="active"] {
+.vibe-kanban-notification-lens[data-state="active"] {
   border-color: color-mix(in oklch, var(--primary) 34%, transparent);
   background: color-mix(in oklch, var(--primary) 10%, transparent);
   color: var(--foreground);
 }
 
-.triage-notification-lens-count {
+.vibe-kanban-notification-lens-count {
   flex: 0 0 auto;
   color: var(--foreground);
   font-size: 11.5px;
   font-weight: 600;
 }
 
-.triage-notification-header {
+.vibe-kanban-notification-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border-bottom: 1px solid var(--triage-line);
+  border-bottom: 1px solid var(--vibe-kanban-line);
   padding: 9px 8px 9px 14px;
 }
 
-.triage-notification-optin {
+.vibe-kanban-notification-optin {
   display: flex;
   width: 100%;
   align-items: flex-start;
   gap: 9px;
   border: 0;
-  border-top: 1px solid var(--triage-line);
+  border-top: 1px solid var(--vibe-kanban-line);
   background: transparent;
   padding: 10px 14px;
   color: var(--muted-foreground);
@@ -641,14 +634,14 @@
   cursor: pointer;
 }
 
-.triage-notification-scroll {
+.vibe-kanban-notification-scroll {
   max-height: min(400px, 58vh);
   overflow-y: auto;
   padding-bottom: 4px;
   overscroll-behavior-y: contain;
 }
 
-.triage-notification-bucket {
+.vibe-kanban-notification-bucket {
   position: sticky;
   z-index: 1;
   top: 0;
@@ -665,22 +658,22 @@
 }
 
 /* The one group that is a standing state rather than a day of history. */
-.triage-notification-bucket[data-pinned] {
+.vibe-kanban-notification-bucket[data-pinned] {
   color: var(--destructive);
 }
 
-.triage-notification-bucket-count {
+.vibe-kanban-notification-bucket-count {
   border-radius: 999px;
   background: color-mix(in oklch, var(--ink) 8%, transparent);
   padding: 0 5px;
   letter-spacing: 0;
 }
 
-.triage-notification-bucket[data-pinned] .triage-notification-bucket-count {
+.vibe-kanban-notification-bucket[data-pinned] .vibe-kanban-notification-bucket-count {
   background: color-mix(in oklch, var(--destructive) 14%, transparent);
 }
 
-.triage-notification-row {
+.vibe-kanban-notification-row {
   position: relative;
   display: grid;
   width: 100%;
@@ -690,7 +683,7 @@
   transition: background-color 120ms ease;
 }
 
-.triage-notification-row-main {
+.vibe-kanban-notification-row-main {
   display: grid;
   min-width: 0;
   grid-template-columns: 6px minmax(0, 1fr);
@@ -705,20 +698,20 @@
   cursor: pointer;
 }
 
-.triage-notification-row-main > .bb-status-dot {
+.vibe-kanban-notification-row-main > .bb-status-dot {
   margin-top: 5px;
 }
 
-.triage-notification-row-main:disabled {
+.vibe-kanban-notification-row-main:disabled {
   cursor: default;
 }
 
-.triage-notification-row-main:focus-visible {
+.vibe-kanban-notification-row-main:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: -2px;
 }
 
-.triage-notification-trailing {
+.vibe-kanban-notification-trailing {
   position: relative;
   display: grid;
   min-width: 0;
@@ -726,12 +719,12 @@
   padding: 14px 10px 0 0;
 }
 
-.triage-notification-time,
-.triage-notification-delete {
+.vibe-kanban-notification-time,
+.vibe-kanban-notification-delete {
   grid-area: 1 / 1;
 }
 
-.triage-notification-delete {
+.vibe-kanban-notification-delete {
   display: inline-flex;
   width: 24px;
   height: 24px;
@@ -751,42 +744,42 @@
     opacity 120ms ease;
 }
 
-.triage-notification-delete:focus-visible {
+.vibe-kanban-notification-delete:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: 1px;
 }
 
-.triage-notification-delete:disabled {
+.vibe-kanban-notification-delete:disabled {
   cursor: wait;
   opacity: 0.55;
 }
 
-.triage-notification-row:hover .triage-notification-delete,
-.triage-notification-row:focus-within .triage-notification-delete {
+.vibe-kanban-notification-row:hover .vibe-kanban-notification-delete,
+.vibe-kanban-notification-row:focus-within .vibe-kanban-notification-delete {
   opacity: 1;
   pointer-events: auto;
 }
 
-.triage-notification-row:has(.triage-notification-delete):hover .triage-notification-time,
-.triage-notification-row:has(.triage-notification-delete):focus-within
-  .triage-notification-time {
+.vibe-kanban-notification-row:has(.vibe-kanban-notification-delete):hover .vibe-kanban-notification-time,
+.vibe-kanban-notification-row:has(.vibe-kanban-notification-delete):focus-within
+  .vibe-kanban-notification-time {
   opacity: 0;
 }
 
 /* A touch device has no hover to reveal the delete with, so the affordance is
    simply always present there — same principle as the card actions above. */
 @media (hover: none) and (pointer: coarse) {
-  .triage-notification-row:has(.triage-notification-delete) .triage-notification-delete {
+  .vibe-kanban-notification-row:has(.vibe-kanban-notification-delete) .vibe-kanban-notification-delete {
     opacity: 1;
     pointer-events: auto;
   }
 
-  .triage-notification-row:has(.triage-notification-delete) .triage-notification-time {
+  .vibe-kanban-notification-row:has(.vibe-kanban-notification-delete) .vibe-kanban-notification-time {
     opacity: 0;
   }
 }
 
-.triage-notification-unread-dot {
+.vibe-kanban-notification-unread-dot {
   width: 5px;
   height: 5px;
   margin-top: 7px;
@@ -794,15 +787,15 @@
   background: transparent;
 }
 
-.triage-notification-row[data-unread] .triage-notification-unread-dot {
+.vibe-kanban-notification-row[data-unread] .vibe-kanban-notification-unread-dot {
   background: var(--primary);
 }
 
-.triage-notification-row + .triage-notification-row {
-  border-top: 1px solid var(--triage-line);
+.vibe-kanban-notification-row + .vibe-kanban-notification-row {
+  border-top: 1px solid var(--vibe-kanban-line);
 }
 
-.triage-notification-action {
+.vibe-kanban-notification-action {
   display: flex;
   align-items: center;
   color: var(--foreground);
@@ -810,7 +803,7 @@
   font-weight: 500;
 }
 
-.triage-notification-action-text {
+.vibe-kanban-notification-action-text {
   display: -webkit-box;
   overflow: hidden;
   overflow-wrap: anywhere;
@@ -819,24 +812,24 @@
   line-height: 1.45;
 }
 
-.triage-notification-row:not([data-unread]) .triage-notification-action {
+.vibe-kanban-notification-row:not([data-unread]) .vibe-kanban-notification-action {
   color: color-mix(in oklch, var(--foreground) 76%, transparent);
   font-weight: 400;
 }
 
 /* A repeat is one fact with a multiplier, not a stack of rows. */
-.triage-notification-tally {
+.vibe-kanban-notification-tally {
   flex: 0 0 auto;
   margin-left: 5px;
   border-radius: 999px;
-  background: var(--triage-dim);
+  background: var(--vibe-kanban-dim);
   padding: 0 5px;
   color: var(--muted-foreground);
   font-size: 10px;
   font-weight: 600;
 }
 
-.triage-notification-target {
+.vibe-kanban-notification-target {
   display: block;
   margin-top: 4px;
   color: var(--muted-foreground);
@@ -845,7 +838,7 @@
   overflow-wrap: anywhere;
 }
 
-.triage-notification-metadata {
+.vibe-kanban-notification-metadata {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -855,7 +848,7 @@
   font-size: 10.5px;
 }
 
-.triage-notification-meta-item {
+.vibe-kanban-notification-meta-item {
   display: inline-flex;
   align-items: center;
   min-width: 0;
@@ -863,45 +856,45 @@
   gap: 4px;
 }
 
-.triage-notification-meta-item > span {
+.vibe-kanban-notification-meta-item > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.triage-notification-metadata svg {
+.vibe-kanban-notification-metadata svg {
   width: 13px;
   height: 13px;
   flex-shrink: 0;
 }
 
-.triage-notification-agent {
+.vibe-kanban-notification-agent {
   display: inline-flex;
   align-items: center;
 }
 
-.triage-notification-agent svg {
+.vibe-kanban-notification-agent svg {
   width: 15px;
   height: 15px;
 }
 
-.triage-notification-number {
+.vibe-kanban-notification-number {
   font-variant-numeric: tabular-nums;
 }
 
 /* Leads the line so truncation eats the title before it eats the state. */
-.triage-notification-state {
+.vibe-kanban-notification-state {
   color: color-mix(in oklch, var(--foreground) 74%, transparent);
   font-weight: 500;
 }
 
-.triage-notification-missing {
+.vibe-kanban-notification-missing {
   font-style: italic;
   opacity: 0.75;
 }
 
 /* The failure text itself, which used to hide in a title attribute. */
-.triage-notification-reason {
+.vibe-kanban-notification-reason {
   display: -webkit-box;
   overflow: hidden;
   margin-top: 3px;
@@ -912,7 +905,7 @@
   -webkit-line-clamp: 2;
 }
 
-.triage-notification-time {
+.vibe-kanban-notification-time {
   width: 100%;
   color: var(--muted-foreground);
   font-size: 10.5px;
@@ -962,9 +955,9 @@
 .bb-field-group {
   display: grid;
   gap: 10px;
-  border: 1px solid var(--triage-line);
+  border: 1px solid var(--vibe-kanban-line);
   border-radius: 12px;
-  background: var(--triage-sunken);
+  background: var(--vibe-kanban-sunken);
   padding: 12px;
 }
 
@@ -983,8 +976,8 @@
   font-size: 11.5px;
 }
 
-.triage-edit-body,
-.triage-detail-body {
+.vibe-kanban-edit-body,
+.vibe-kanban-detail-body {
   display: grid;
   max-height: min(64vh, 620px);
   gap: 14px;
@@ -992,22 +985,22 @@
   padding-right: 2px;
 }
 
-.triage-dialog-footer {
+.vibe-kanban-dialog-footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  border-top: 1px solid var(--triage-line);
+  border-top: 1px solid var(--vibe-kanban-line);
   padding-top: 14px;
 }
 
-.triage-locked-field {
+.vibe-kanban-locked-field {
   display: flex;
   height: 36px;
   min-width: 0;
   align-items: center;
   gap: 8px;
-  border: 1px dashed var(--triage-line-strong);
+  border: 1px dashed var(--vibe-kanban-line-strong);
   border-radius: 8px;
   padding-inline: 12px;
   color: var(--muted-foreground);
@@ -1015,7 +1008,7 @@
   font-weight: 400;
 }
 
-.triage-detail-eyebrow {
+.vibe-kanban-detail-eyebrow {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1023,19 +1016,19 @@
   font-size: 11.5px;
 }
 
-.triage-detail-status {
+.vibe-kanban-detail-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.triage-detail-prompt {
+.vibe-kanban-detail-prompt {
   color: color-mix(in oklch, var(--foreground) 88%, transparent);
   font-size: 13px;
   line-height: 1.6;
 }
 
-.triage-detail-attention {
+.vibe-kanban-detail-attention {
   display: flex;
   gap: 10px;
   border: 1px solid color-mix(in oklch, var(--destructive) 30%, transparent);
@@ -1046,68 +1039,68 @@
   font-size: 13px;
 }
 
-.triage-detail-grid {
+.vibe-kanban-detail-grid {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  border: 1px solid var(--triage-line);
+  border: 1px solid var(--vibe-kanban-line);
   border-radius: 12px;
-  background: var(--triage-sunken);
+  background: var(--vibe-kanban-sunken);
   padding: 14px;
 }
 
-.triage-detail-row {
+.vibe-kanban-detail-row {
   min-width: 0;
 }
 
-.triage-detail-row dt {
+.vibe-kanban-detail-row dt {
   color: var(--muted-foreground);
   font-size: 11px;
 }
 
-.triage-detail-row dd {
+.vibe-kanban-detail-row dd {
   margin: 3px 0 0;
   font-size: 13px;
   font-weight: 500;
   overflow-wrap: anywhere;
 }
 
-.triage-stage-list {
+.vibe-kanban-stage-list {
   display: grid;
   max-height: min(48vh, 420px);
   gap: 6px;
   overflow-y: auto;
 }
 
-.triage-stage-row {
+.vibe-kanban-stage-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px solid var(--triage-line);
+  border: 1px solid var(--vibe-kanban-line);
   border-radius: 10px;
   background: var(--card);
   padding: 6px 6px 6px 10px;
 }
 
-.triage-stage-handle { cursor: grab; touch-action: none; }
-.triage-stage-handle:active { cursor: grabbing; }
-.triage-stage-row { position: relative; transition: transform 160ms ease; }
-.triage-stage-row[data-dragging] {
+.vibe-kanban-stage-handle { cursor: grab; touch-action: none; }
+.vibe-kanban-stage-handle:active { cursor: grabbing; }
+.vibe-kanban-stage-row { position: relative; transition: transform 160ms ease; }
+.vibe-kanban-stage-row[data-dragging] {
   z-index: 1;
   transition: none;
   box-shadow: 0 8px 20px rgb(0 0 0 / 30%);
 }
-.triage-sidebar-setting {
+.vibe-kanban-sidebar-setting {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-top: 1px solid var(--triage-line);
+  border-top: 1px solid var(--vibe-kanban-line);
   padding-top: 16px;
   font-size: 14px;
 }
 
-.triage-sidebar-switch {
+.vibe-kanban-sidebar-switch {
   appearance: none;
   position: relative;
   width: 36px;
@@ -1120,7 +1113,7 @@
   cursor: pointer;
 }
 
-.triage-sidebar-switch::before {
+.vibe-kanban-sidebar-switch::before {
   content: "";
   position: absolute;
   top: 2px;
@@ -1131,20 +1124,20 @@
   background: var(--foreground);
 }
 
-.triage-sidebar-switch:checked { background: var(--primary); }
-.triage-sidebar-switch:checked::before { transform: translateX(16px); background: var(--primary-foreground); }
-.triage-sidebar-switch:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
-.triage-sidebar-switch:disabled { opacity: 0.5; cursor: default; }
+.vibe-kanban-sidebar-switch:checked { background: var(--primary); }
+.vibe-kanban-sidebar-switch:checked::before { transform: translateX(16px); background: var(--primary-foreground); }
+.vibe-kanban-sidebar-switch:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.vibe-kanban-sidebar-switch:disabled { opacity: 0.5; cursor: default; }
 
 @media (prefers-reduced-motion: reduce) {
-  .triage-stage-row { transition: none; }
+  .vibe-kanban-stage-row { transition: none; }
 }
 
-.triage-composer-shell {
+.vibe-kanban-composer-shell {
   min-width: 0;
 }
 
-.triage-create-meta {
+.vibe-kanban-create-meta {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
   gap: 12px;
@@ -1154,7 +1147,7 @@
 /* ---------------------------------------------------------------------------
    Schedule picker
    ------------------------------------------------------------------------ */
-.triage-schedule-popover {
+.vibe-kanban-schedule-popover {
   transform-origin: var(--radix-popover-content-transform-origin);
   max-height: min(560px, var(--radix-popover-content-available-height, 75dvh));
   max-width: calc(100vw - 24px);
@@ -1162,22 +1155,22 @@
   overscroll-behavior: contain;
 }
 
-.triage-schedule-panel {
+.vibe-kanban-schedule-panel {
   margin-top: 12px;
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
 
-.triage-schedule-calendar {
+.vibe-kanban-schedule-calendar {
   width: 280px;
   background: transparent;
 }
 
-.triage-schedule-calendar [data-slot="calendar"] {
+.vibe-kanban-schedule-calendar [data-slot="calendar"] {
   width: 100%;
 }
 
-.triage-schedule-calendar button[data-day] {
+.vibe-kanban-schedule-calendar button[data-day] {
   width: 34px;
   height: 34px;
   min-width: 34px;
@@ -1185,16 +1178,16 @@
   font-size: 0.8125rem;
 }
 
-.triage-schedule-calendar button[data-day][data-selected-single="true"] {
+.vibe-kanban-schedule-calendar button[data-day][data-selected-single="true"] {
   background: var(--foreground);
   color: var(--background);
 }
 
-.triage-schedule-calendar button[data-day]:not([data-selected-single="true"]):active {
+.vibe-kanban-schedule-calendar button[data-day]:not([data-selected-single="true"]):active {
   transform: scale(0.94);
 }
 
-.triage-schedule-time {
+.vibe-kanban-schedule-time {
   display: grid;
   gap: 8px;
   margin-top: 8px;
@@ -1202,7 +1195,7 @@
   padding-top: 10px;
 }
 
-.triage-schedule-time-label {
+.vibe-kanban-schedule-time-label {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -1211,7 +1204,7 @@
   font-weight: 500;
 }
 
-.triage-schedule-time-label span:last-child {
+.vibe-kanban-schedule-time-label span:last-child {
   color: var(--muted-foreground);
   font-size: 11px;
   font-weight: 400;
@@ -1257,7 +1250,7 @@
   border-color: var(--destructive);
 }
 
-.triage-schedule-presets {
+.vibe-kanban-schedule-presets {
   display: flex;
   gap: 6px;
   margin-top: 8px;
@@ -1266,23 +1259,21 @@
 /* ---------------------------------------------------------------------------
    Pointer-dependent affordances
 
-   Hover reveals are gated so a touch device never has to guess: on coarse
-   pointers the card actions are simply always present.
+   Card actions stay visible, with stronger contrast on hover or keyboard focus.
    ------------------------------------------------------------------------ */
 @media (hover: hover) and (pointer: fine) {
-  .triage-card:hover {
-    border-color: var(--triage-line-strong);
-    box-shadow: 0 2px 10px color-mix(in oklab, var(--ink) 8%, transparent);
+  .vibe-kanban-card:hover {
+    border-color: var(--vibe-kanban-line-strong);
+    box-shadow: none;
   }
 
-  .triage-card-actions {
-    opacity: 0;
-    pointer-events: none;
+  .vibe-kanban-card-actions {
+    opacity: .55;
     transition: opacity 140ms ease;
   }
 
-  .triage-card:is(:hover, :focus-within) .triage-card-actions,
-  .triage-card:has([data-state="open"]) .triage-card-actions {
+  .vibe-kanban-card:is(:hover, :focus-within) .vibe-kanban-card-actions,
+  .vibe-kanban-card:has([data-state="open"]) .vibe-kanban-card-actions {
     opacity: 1;
     pointer-events: auto;
   }
@@ -1291,29 +1282,29 @@
     color: color-mix(in oklch, var(--foreground) 72%, transparent);
   }
 
-  .triage-notification-row:hover {
+  .vibe-kanban-notification-row:hover {
     background: var(--state-hover);
   }
 
-  .triage-notification-row[data-unread]:hover {
+  .vibe-kanban-notification-row[data-unread]:hover {
     background: color-mix(in oklch, var(--primary) 9%, transparent);
   }
 
-  .triage-notification-delete:not(:disabled):hover {
+  .vibe-kanban-notification-delete:not(:disabled):hover {
     background: color-mix(in oklch, var(--destructive) 10%, transparent);
     color: var(--destructive);
   }
 
-  .triage-notification-optin:hover {
+  .vibe-kanban-notification-optin:hover {
     background: var(--state-hover);
   }
 
-  .triage-notification-lens:not(:disabled, [data-state="active"]):hover {
+  .vibe-kanban-notification-lens:not(:disabled, [data-state="active"]):hover {
     background: var(--state-hover);
     color: var(--foreground);
   }
 
-  .triage-schedule-calendar button[data-day]:not([data-selected-single="true"]):hover {
+  .vibe-kanban-schedule-calendar button[data-day]:not([data-selected-single="true"]):hover {
     background: color-mix(in oklch, var(--ink) 7%, transparent);
   }
 }
@@ -1347,25 +1338,25 @@
    Narrow viewports
    ------------------------------------------------------------------------ */
 @media (max-width: 900px) {
-  .triage-connection-label {
+  .vibe-kanban-connection-label {
     display: none;
   }
 }
 
 @media (max-width: 780px) {
-  .triage-column {
+  .vibe-kanban-column {
     flex-basis: 260px;
     max-width: min(480px, 84vw);
   }
 
-  .triage-create-meta {
+  .vibe-kanban-create-meta {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 640px) {
   .bb-field-row,
-  .triage-detail-grid {
+  .vibe-kanban-detail-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -1374,11 +1365,11 @@
    Reduced motion — keep the colour cues, drop the movement
    ------------------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
-  .triage-card,
-  .triage-column,
-  .triage-column-empty,
+  .vibe-kanban-card,
+  .vibe-kanban-column,
+  .vibe-kanban-column-empty,
   .bb-segmented-item,
-  .triage-card-actions {
+  .vibe-kanban-card-actions {
     transition-duration: 1ms;
   }
 
@@ -1404,21 +1395,21 @@
    than the board's: the heading is a label rather than a title, rows are a
    single line, and nothing is allowed to widen a 200px sidebar.
    ------------------------------------------------------------------------ */
-.triage-sidebar {
+.vibe-kanban-sidebar {
   display: flex;
   min-width: 0;
   flex: 0 0 auto;
   flex-direction: column;
   padding: 2px 4px 6px;
-  border-bottom: 1px solid var(--triage-line);
+  border-bottom: 1px solid var(--vibe-kanban-line);
 }
 
-.triage-sidebar-heading {
+.vibe-kanban-sidebar-heading {
   margin: 0;
   font: inherit;
 }
 
-.triage-sidebar-toggle {
+.vibe-kanban-sidebar-toggle {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -1437,23 +1428,23 @@
   cursor: pointer;
 }
 
-.triage-sidebar-chevron {
+.vibe-kanban-sidebar-chevron {
   flex: 0 0 auto;
   opacity: 0.7;
-  transition: transform 140ms var(--triage-ease-out);
+  transition: transform 140ms var(--vibe-kanban-ease-out);
 }
 
-.triage-sidebar-toggle[aria-expanded="false"] .triage-sidebar-chevron {
+.vibe-kanban-sidebar-toggle[aria-expanded="false"] .vibe-kanban-sidebar-chevron {
   transform: rotate(-90deg);
 }
 
-.triage-sidebar-title {
+.vibe-kanban-sidebar-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.triage-sidebar-count {
+.vibe-kanban-sidebar-count {
   flex: 0 0 auto;
   margin-left: auto;
   padding-left: 6px;
@@ -1463,7 +1454,7 @@
   opacity: 0.8;
 }
 
-.triage-sidebar-list {
+.vibe-kanban-sidebar-list {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -1473,8 +1464,8 @@
   list-style: none;
 }
 
-.triage-sidebar-row,
-.triage-sidebar-more {
+.vibe-kanban-sidebar-row,
+.vibe-kanban-sidebar-more {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -1493,20 +1484,20 @@
   transition: background-color 120ms ease;
 }
 
-.triage-sidebar-row[data-active] {
+.vibe-kanban-sidebar-row[data-active] {
   background: color-mix(in oklch, var(--primary) 10%, transparent);
   color: var(--foreground);
   font-weight: 500;
 }
 
-.triage-sidebar-row:focus-visible,
-.triage-sidebar-more:focus-visible,
-.triage-sidebar-toggle:focus-visible {
+.vibe-kanban-sidebar-row:focus-visible,
+.vibe-kanban-sidebar-more:focus-visible,
+.vibe-kanban-sidebar-toggle:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: -1px;
 }
 
-.triage-sidebar-number {
+.vibe-kanban-sidebar-number {
   flex: 0 0 auto;
   color: var(--muted-foreground);
   font-size: 11px;
@@ -1515,7 +1506,7 @@
 
 /* The one element allowed to give up space, so a long title ellipses instead
    of pushing the stamp out of the sidebar. */
-.triage-sidebar-label {
+.vibe-kanban-sidebar-label {
   overflow: hidden;
   min-width: 0;
   flex: 1 1 auto;
@@ -1523,52 +1514,116 @@
   white-space: nowrap;
 }
 
-.triage-sidebar-time {
+.vibe-kanban-sidebar-time {
   flex: 0 0 auto;
   color: var(--muted-foreground);
   font-size: 10.5px;
   opacity: 0.7;
 }
 
-.triage-sidebar-more {
+.vibe-kanban-sidebar-more {
   color: var(--muted-foreground);
   font-size: 11px;
 }
 
-.triage-sidebar-more [data-icon] {
+.vibe-kanban-sidebar-more [data-icon] {
   flex: 0 0 auto;
   opacity: 0.7;
 }
 
 /* Coarse pointers get a taller target; the row is the whole affordance, so it
    has to be reachable with a thumb. */
-.triage-sidebar[data-compact] .triage-sidebar-row,
-.triage-sidebar[data-compact] .triage-sidebar-more {
+.vibe-kanban-sidebar[data-compact] .vibe-kanban-sidebar-row,
+.vibe-kanban-sidebar[data-compact] .vibe-kanban-sidebar-more {
   padding-block: 8px;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .triage-sidebar-toggle:hover,
-  .triage-sidebar-more:hover {
+  .vibe-kanban-sidebar-toggle:hover,
+  .vibe-kanban-sidebar-more:hover {
     color: var(--foreground);
   }
 
-  .triage-sidebar-row:hover {
+  .vibe-kanban-sidebar-row:hover {
     background: var(--state-hover);
   }
 
-  .triage-sidebar-row[data-active]:hover {
+  .vibe-kanban-sidebar-row[data-active]:hover {
     background: color-mix(in oklch, var(--primary) 14%, transparent);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .triage-sidebar-row,
-  .triage-sidebar-more {
+  .vibe-kanban-sidebar-row,
+  .vibe-kanban-sidebar-more {
     transition-duration: 1ms;
   }
 
-  .triage-sidebar-chevron {
+  .vibe-kanban-sidebar-chevron {
     transition: none;
   }
+}
+
+/* Compact board metadata; colors follow BB's active palette. */
+.vibe-kanban-stage-icon { display: flex; color: var(--muted-foreground); }
+.vibe-kanban-stage-icon[data-role="active"] { color: var(--warning); }
+.vibe-kanban-stage-icon[data-role="attention"] { color: var(--timeline-accent); }
+.vibe-kanban-stage-icon[data-role="done"] { color: var(--success); }
+.vibe-kanban-card-head { align-items: center; min-height: 20px; }
+.vibe-kanban-card-id { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; color: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.vibe-kanban-card-agent { display: inline-flex; min-width: 0; align-items: center; gap: 5px; color: var(--muted-foreground); font-size: 11px; }
+.vibe-kanban-card-agent[data-running], .vibe-kanban-card-status[data-running] { color: var(--success); }
+.vibe-kanban-card[data-running] { border-color: color-mix(in oklch, var(--success) 34%, var(--vibe-kanban-line)); }
+.vibe-kanban-card[data-running]:hover { border-color: color-mix(in oklch, var(--success) 58%, var(--vibe-kanban-line)); }
+.vibe-kanban-card-context { display: flex; min-width: 0; gap: 5px; color: var(--muted-foreground); font-size: 11px; }
+.vibe-kanban-card-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; }
+.vibe-kanban-card-tags > button, .vibe-kanban-card-head > .vibe-kanban-priority-trigger, .vibe-kanban-run-button { position: relative; z-index: 2; }
+.vibe-kanban-card-label { border-radius: 5px; }
+.vibe-kanban-card-label:focus-visible { outline: 2px solid var(--ring); }
+.vibe-kanban-card-status { margin-left: auto; }
+.vibe-kanban-card-status > [data-slot="status-dot"] { flex-shrink: 0; }
+.vibe-kanban-priority-mark { display: inline-flex; height: 16px; width: 16px; align-items: flex-end; justify-content: center; gap: 2px; padding-bottom: 2px; color: var(--muted-foreground); font-size: 13px; font-weight: 700; }
+.vibe-kanban-priority-mark i { width: 3px; border-radius: 1px; background: currentColor; opacity: .2; }
+.vibe-kanban-priority-mark i[data-filled] { opacity: 1; }
+.vibe-kanban-priority-mark[data-priority="urgent"] { align-items: center; padding: 0; color: var(--destructive); border: 1px solid currentColor; border-radius: 4px; }
+.vibe-kanban-priority-mark[data-priority="high"] { color: var(--warning); }
+.vibe-kanban-priority-trigger { gap: 0; width: 26px; height: 24px; min-height: 24px; padding: 3px; border-color: transparent; box-shadow: none; background: transparent; }
+.vibe-kanban-priority-trigger > svg { display: none; }
+.vibe-kanban-label { display: inline-flex; align-items: center; gap: 5px; max-width: 150px; padding: 2px 6px; border: 1px solid var(--vibe-kanban-line); border-radius: 5px; color: var(--muted-foreground); font-size: 11px; line-height: 17px; }
+.vibe-kanban-label > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.vibe-kanban-label-dot { display: inline-block; height: 7px; width: 7px; flex-shrink: 0; border-radius: 50%; background: var(--muted-foreground); }
+.vibe-kanban-label-dot[data-color="blue"] { background: var(--timeline-accent); }
+.vibe-kanban-label-dot[data-color="green"] { background: var(--success); }
+.vibe-kanban-label-dot[data-color="amber"] { background: var(--warning); }
+.vibe-kanban-label-dot[data-color="red"] { background: var(--destructive); }
+.vibe-kanban-label-dot[data-color="purple"] { background: var(--pr-merged); }
+.vibe-kanban-label-trigger { height: 24px; width: 24px; min-height: 24px; padding: 3px; border-color: transparent; color: var(--muted-foreground); box-shadow: none; background: transparent; }
+.vibe-kanban-label-option { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; border-radius: 5px; padding: 6px; }
+.vibe-kanban-label-option:hover, .vibe-kanban-label-option:focus-visible { background: var(--state-hover); }
+.vibe-kanban-label-option:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.vibe-kanban-label-option:disabled { opacity: .5; }
+.vibe-kanban-children { display: inline-flex; align-items: center; gap: 4px; color: var(--muted-foreground); font-size: 11px; }
+.vibe-kanban-color-picker { display: flex; gap: 3px; }
+.vibe-kanban-color-picker button { display: grid; place-items: center; width: 25px; height: 28px; border-radius: 5px; border: 1px solid transparent; }
+.vibe-kanban-color-picker button[aria-pressed="true"] { border-color: var(--ring); background: var(--state-hover); }
+.vibe-kanban-color-picker button:focus-visible { outline: 2px solid var(--ring); }
+.vibe-kanban-color-picker .vibe-kanban-label-dot { height: 10px; width: 10px; }
+.vibe-kanban-label-editor { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.vibe-kanban-label-editor input { flex: 1; min-width: 110px; }
+.vibe-kanban-create-properties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* The labeled action below delegates to the host's resolved composer submit. */
+.vibe-kanban-composer-shell button[type="submit"] { display: none; }
+@media (max-width: 640px) {
+  .vibe-kanban-toolbar { padding: 12px; }
+  .vibe-kanban-filter-popover { width: 100%; }
+  .vibe-kanban-board { gap: 14px; padding: 14px 12px 0; }
+  .vibe-kanban-create-properties { grid-template-columns: 1fr; }
+}
+@media (pointer: coarse) {
+  .vibe-kanban-priority-trigger, .vibe-kanban-label-trigger, .vibe-kanban-run-button { min-width: 36px; min-height: 36px; }
+  .vibe-kanban-color-picker button { min-width: 32px; min-height: 36px; }
+}
+
+@media (max-width: 640px) {
+  .vibe-kanban-header-label { display: none; }
 }

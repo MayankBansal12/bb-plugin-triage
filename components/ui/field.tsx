@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
-/** Vertical label + control + hint stack shared by every Triage form. */
+/** Vertical label + control + hint stack shared by every Vibe Kanban form. */
 function Field({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("bb-field", className)} {...props} />;
 }

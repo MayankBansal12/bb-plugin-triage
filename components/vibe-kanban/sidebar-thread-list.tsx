@@ -7,7 +7,7 @@ import {
   type PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
 
-import { ThreadTriageAction } from "./thread-triage-action";
+import { ThreadKanbanAction } from "./thread-vibe-kanban-action";
 import { Icon } from "@/components/ui/icon";
 import { StatusDot } from "@/components/ui/status-dot";
 import {
@@ -17,12 +17,12 @@ import {
   isTaskRunning,
   needsAttention,
   presentRunState,
-} from "@/lib/triage-format";
-import { claimTriageRefresh, requestOpenTaskDetail } from "@/lib/triage-mounts";
-import { useTriage } from "@/lib/triage-store";
-import type { Task } from "@/lib/triage-types";
+} from "@/lib/vibe-kanban-format";
+import { claimKanbanRefresh, requestOpenTaskDetail } from "@/lib/vibe-kanban-mounts";
+import { useKanban } from "@/lib/vibe-kanban-store";
+import type { Task } from "@/lib/vibe-kanban-types";
 
-/** The sidebar belongs to the thread list; Triage borrows the top of it, not more. */
+/** The sidebar belongs to the thread list; Vibe Kanban borrows the top of it, not more. */
 const ROW_CAP = 10;
 
 /** Kept out of component state so the disclosure survives a route change. */
@@ -40,28 +40,28 @@ function matchesQuery(task: Task, query: string): boolean {
   return task.title.toLowerCase().includes(query) || `#${task.number}`.includes(query);
 }
 
-function TriageSidebarSection({
+function KanbanSidebarSection({
   activeThreadId,
   activeProjectId,
   isCompactViewport,
   onNavigate,
   searchQuery,
 }: Omit<PluginThreadListProps, "Original" | "experimental_Original">) {
-  const { snapshot, refresh } = useTriage();
+  const { snapshot, refresh } = useKanban();
   const navigate = useBbNavigate();
   const threads = experimental_useSidebarThreadActions();
   const [collapsed, setCollapsed] = React.useState(sectionCollapsed);
 
   // The board's subscription only runs while the board is mounted, so the
   // sidebar carries its own to stay live on a thread route.
-  useRealtime("triage", (payload) => {
-    if (claimTriageRefresh(payload)) void refresh();
+  useRealtime("vibe-kanban", (payload) => {
+    if (claimKanbanRefresh(payload)) void refresh();
   });
 
   const query = searchQuery.trim().toLowerCase();
 
   // Scoped to the selected project, because the list underneath is: an
-  // unscoped Triage section would read as noise against it.
+  // unscoped Vibe Kanban section would read as noise against it.
   const rows = React.useMemo(() => {
     if (!snapshot) return [];
     return snapshot.tasks
@@ -79,13 +79,13 @@ function TriageSidebarSection({
     if (task.threadId) threads.open(task.threadId);
     else {
       requestOpenTaskDetail(task.number);
-      navigate.toPluginPanel("triage");
+      navigate.toPluginPanel("vibe-kanban");
     }
     onNavigate();
   };
 
   const showBoard = () => {
-    navigate.toPluginPanel("triage");
+    navigate.toPluginPanel("vibe-kanban");
     onNavigate();
   };
 
@@ -93,29 +93,29 @@ function TriageSidebarSection({
 
   return (
     <section
-      className="triage-sidebar"
-      aria-label="Triage"
+      className="vibe-kanban-sidebar"
+      aria-label="Vibe Kanban"
       data-compact={isCompactViewport ? "" : undefined}
     >
-      <h2 className="triage-sidebar-heading">
+      <h2 className="vibe-kanban-sidebar-heading">
         <button
           type="button"
-          className="triage-sidebar-toggle"
+          className="vibe-kanban-sidebar-toggle"
           aria-expanded={!collapsed}
           onClick={() => {
             sectionCollapsed = !collapsed;
             setCollapsed(sectionCollapsed);
           }}
         >
-          <Icon name="ChevronDown" className="triage-sidebar-chevron size-3.5" aria-hidden="true" />
-          <span className="triage-sidebar-title">Triage</span>
-          <span className="triage-sidebar-count tabular-nums">{rows.length}</span>
+          <Icon name="ChevronDown" className="vibe-kanban-sidebar-chevron size-3.5" aria-hidden="true" />
+          <span className="vibe-kanban-sidebar-title">Vibe Kanban</span>
+          <span className="vibe-kanban-sidebar-count tabular-nums">{rows.length}</span>
         </button>
       </h2>
 
       {collapsed ? null : (
         <>
-          <ul className="triage-sidebar-list">
+          <ul className="vibe-kanban-sidebar-list">
             {visible.map((task) => {
               const status = presentRunState(task);
               const stamp = task.scheduledAt ?? task.updatedAt;
@@ -123,7 +123,7 @@ function TriageSidebarSection({
                 <li key={task.id}>
                   <button
                     type="button"
-                    className="triage-sidebar-row"
+                    className="vibe-kanban-sidebar-row"
                     data-active={
                       task.threadId !== null && task.threadId === activeThreadId ? "" : undefined
                     }
@@ -136,10 +136,10 @@ function TriageSidebarSection({
                       size="sm"
                       pulse={status.live}
                     />
-                    <span className="triage-sidebar-number tabular-nums">#{task.number}</span>
-                    <span className="triage-sidebar-label">{task.title}</span>
+                    <span className="vibe-kanban-sidebar-number tabular-nums">#{task.number}</span>
+                    <span className="vibe-kanban-sidebar-label">{task.title}</span>
                     <time
-                      className="triage-sidebar-time tabular-nums"
+                      className="vibe-kanban-sidebar-time tabular-nums"
                       dateTime={new Date(stamp).toISOString()}
                       title={formatAbsolute(stamp)}
                     >
@@ -154,11 +154,11 @@ function TriageSidebarSection({
           {rows.length > visible.length ? (
             <button
               type="button"
-              className="triage-sidebar-more"
-              aria-label={`Show all ${rows.length} Triage cards on the board`}
+              className="vibe-kanban-sidebar-more"
+              aria-label={`Show all ${rows.length} Vibe Kanban cards on the board`}
               onClick={showBoard}
             >
-              <span className="triage-sidebar-label">Show all {rows.length}</span>
+              <span className="vibe-kanban-sidebar-label">Show all {rows.length}</span>
               <Icon name="ChevronRight" className="size-3.5" aria-hidden="true" />
             </button>
           ) : null}
@@ -170,7 +170,7 @@ function TriageSidebarSection({
 
 /**
  * The thread-list slot is exclusive: registering it replaces BB's whole list.
- * So this renders BB's list unconditionally and only adds Triage above it once
+ * So this renders BB's list unconditionally and only adds Vibe Kanban above it once
  * the user opts in — while the setting loads, the sidebar is untouched.
  */
 function SidebarThreadList({
@@ -181,8 +181,8 @@ function SidebarThreadList({
 
   return (
     <>
-      {values?.showInSidebar === true ? <TriageSidebarSection {...props} /> : null}
-      {props.activeThreadId ? <ThreadTriageAction key={props.activeThreadId} threadId={props.activeThreadId} sidebar /> : null}
+      {values?.showInSidebar === true ? <KanbanSidebarSection {...props} /> : null}
+      {props.activeThreadId ? <ThreadKanbanAction key={props.activeThreadId} threadId={props.activeThreadId} sidebar /> : null}
       <Original />
     </>
   );

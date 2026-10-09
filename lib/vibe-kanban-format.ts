@@ -1,6 +1,6 @@
 import type { IconName } from "../components/ui/icon";
 import type { StatusTone } from "../components/ui/status-dot";
-import type { ReasoningLevel, RunState, Stage, Task } from "./triage-types";
+import type { ReasoningLevel, RunState, Stage, Task } from "./vibe-kanban-types";
 
 const MINUTE = 60_000;
 const HOUR = 3_600_000;
@@ -70,6 +70,11 @@ export interface RunPresentation {
  * waiting on a person, and that is what the card should say.
  */
 export function presentRunState(task: Task): RunPresentation {
+  if (task.agentStatus === "unknown") return { tone: "neutral", label: "Agent unavailable", live: false };
+  if (task.agentStatus === "active") return { tone: "ongoing", label: "Agent running", live: true };
+  if (task.agentStatus === "starting") return { tone: "ongoing", label: "Agent starting", live: true };
+  if (task.agentStatus === "idle" && ["working", "starting", "dispatching"].includes(task.runState)) return { tone: "unread", label: "Ready for review", live: false };
+  if (task.agentStatus === "error") return { tone: "danger", label: "Agent failed", live: false };
   switch (task.runState) {
     case "dispatching":
       return { tone: "ongoing", label: "Dispatching", live: true };
@@ -78,11 +83,11 @@ export function presentRunState(task: Task): RunPresentation {
     case "working":
       return { tone: "ongoing", label: "Working", live: true };
     case "idle":
-      return { tone: "unread", label: "Waiting for you", live: false };
+      return { tone: "unread", label: "Ready for review", live: false };
     case "scheduled":
       return { tone: "scheduled", label: "Scheduled", live: false };
     case "queued":
-      return { tone: "pending", label: "Ready to run", live: false };
+      return { tone: "pending", label: "On board", live: false };
     case "failed":
       return { tone: "danger", label: "Failed", live: false };
     case "stopped":
@@ -98,6 +103,7 @@ export function supportsTaskRead(task: Pick<Task, "runState">): boolean {
 }
 
 export function isTaskRunning(task: Task): boolean {
+  if (task.agentStatus) return task.agentStatus === "active" || task.agentStatus === "starting";
   return task.runState === "dispatching" || task.runState === "starting" || task.runState === "working";
 }
 

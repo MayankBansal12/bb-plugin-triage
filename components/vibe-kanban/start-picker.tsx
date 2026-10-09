@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/popover";
 import { Segmented } from "@/components/ui/segmented";
 import { TimePicker } from "@/components/ui/time-picker";
-import { localDateAt, nextScheduleTime, toDatetimeLocal } from "@/lib/triage-format";
+import { localDateAt, nextScheduleTime, toDatetimeLocal } from "@/lib/vibe-kanban-format";
 
 export type StartMode = "now" | "later" | "manual";
 
@@ -131,7 +131,7 @@ function StartPicker({
           avoidCollisions={false}
           collisionPadding={12}
           sideOffset={8}
-          className="triage-schedule-popover w-[340px] p-3"
+          className="vibe-kanban-schedule-popover w-[340px] p-3"
           mobileTitle="Choose a start time"
         >
           <Segmented
@@ -142,7 +142,7 @@ function StartPicker({
             className="w-full [&_.bb-segmented-item]:flex-1"
           />
           {mode === "later" ? (
-            <div className="triage-schedule-panel">
+            <div className="vibe-kanban-schedule-panel">
               <Calendar
                 mode="single"
                 defaultMonth={scheduledDate}
@@ -150,7 +150,7 @@ function StartPicker({
                 selected={scheduledDate}
                 onSelect={selectScheduledDay}
                 disabled={{ before: new Date(new Date().setHours(0, 0, 0, 0)) }}
-                className="triage-schedule-calendar mx-auto p-0"
+                className="vibe-kanban-schedule-calendar mx-auto p-0"
                 classNames={{
                   month: "flex w-full flex-col gap-3",
                   month_grid: "w-full border-collapse",
@@ -164,8 +164,8 @@ function StartPicker({
                   today: "text-foreground",
                 }}
               />
-              <div className="triage-schedule-time">
-                <div className="triage-schedule-time-label">
+              <div className="vibe-kanban-schedule-time">
+                <div className="vibe-kanban-schedule-time-label">
                   <span>Time</span>
                   <span>Local time</span>
                 </div>
@@ -176,7 +176,7 @@ function StartPicker({
                   invalid={scheduleInvalid}
                 />
               </div>
-              <div className="triage-schedule-presets">
+              <div className="vibe-kanban-schedule-presets">
                 {[
                   { label: "In 1 hour", at: Date.now() + 3_600_000 },
                   { label: "Tonight", at: localDateAt(20, 0, 0) },

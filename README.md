@@ -1,108 +1,98 @@
-# Triage for BB
+# Vibe Kanban for BB
 
-Keep agent tasks, progress, and work that needs your attention in one board.
-Run tasks now or schedule them for later, organize them into configurable stages,
-and turn existing BB sessions into cards. Open each card's linked conversation
-to follow the work.
+Plan work, set priorities, and follow your coding agents on a native BB kanban
+board. Inspired by [Vibe Kanban](https://vibekanban.com/), with BB's own agent
+composer, conversations, orchestration, theme, and navigation.
 
-## Screenshots
+## Plan and organize
 
-Track tasks across stages, projects, and machines.
+- Start with **Backlog → To Do → In Progress → In Review → Done**. Add, rename,
+  or reorder columns in board settings. Drag cards or use **Move to** in a
+  card's menu, including on touch devices.
+- Use **Labels & priority** in a card’s menu to organize it. Create colored
+  labels there or in the **Labels** menu. Rename, recolor,
+  or delete them across the board.
+- Choose **No priority**, **Urgent**, **High**, **Medium**, or **Low** on each
+  card. Priority is your decision; agents never assign it. Sort by priority or
+  recent activity. Priority does not change scheduling or execution order.
+- Filter by project, machine, agent, and labels together. Multiple selected
+  labels mean a card must have all of them. Search titles, task IDs, projects,
+  and label names. Machine, agent, labels, and sorting live in **Filters**;
+  active filters appear below the toolbar and can be cleared with one click.
+  Use the **Board** dropdown to switch to Running, Unread, Scheduled, or Archived.
 
-![Triage board with task cards grouped by workflow stage](https://github.com/user-attachments/assets/ccc76352-f56e-4e86-9bab-c9ac229e1c33)
+## Start work when you're ready
 
-Create a task with BB's agent controls and choose when it starts.
+Use **New task** or a column's **+** button. Describe the work in BB's native
+composer, choose its agent and environment, then choose a start behavior:
 
-![New task dialog with agent configuration and start controls](https://github.com/user-attachments/assets/02fe89a8-c63c-4fa3-a91b-cefdd29df095)
+| Start | Action | Behavior |
+| --- | --- | --- |
+| On board (default) | Add to board | Saves the task without starting an agent. |
+| Schedule | Schedule task | Starts automatically at the date and local time you choose. |
+| Run now | Run task | Starts the agent immediately. |
 
-Review recent updates and find work that needs your attention.
+Saved tasks can be edited or started with the card's play button. Scheduling
+requires BB and Vibe Kanban to be running; overdue tasks are picked up when the
+scheduler resumes. Starting work moves its card to In Progress.
 
-![Updates panel with recent task activity and attention filters](https://github.com/user-attachments/assets/ecc281cd-2627-4457-b986-9efcde96b989)
+## Follow your agents
 
-## Requirements
+Cards show the assigned agent and a clear **Agent running** or **Agent starting**
+indicator while BB reports live activity. Agent activity is independent of a
+card's workflow column. Opening a card takes you to the native BB conversation,
+where the existing live work and orchestration remain available.
 
-- BB 0.42+ with a compatible Plugin SDK 0.4.47 runtime.
-- A configured agent provider. Provider accounts and usage charges still apply.
-- BB and Triage must be running for scheduled work to start. Overdue tasks are
-  picked up when the scheduler resumes.
+Cards show labels, assigned priority, and child-thread counts only when present.
+Empty labels, unassigned priority, and zero or unavailable child counts stay hidden.
+The branch icon shows the non-deleted child-thread count, including hidden and
+archived children. This is a count, not a completed / total progress ratio or a
+child-thread navigator. The board refreshes on live events, reconnection, focus, and every
+15 seconds while visible.
 
-Triage stores cards and update history in BB's plugin-owned SQLite database.
-It does not require a separate Triage account or external task service.
-Browser notifications require your permission.
+Agents explicitly report completion or a need for attention using the assigned
+`vibe_kanban_move_task` tool. Ending a turn alone does not mark work complete.
+The **Updates** panel keeps recent events, unread updates, and work needing you.
+Use **Archive card** to remove resolved work from the active board; find it again
+under **Archived**. Archiving a card does not archive its BB conversation.
 
-## Install from Git
+## Existing sessions and the sidebar
 
-Install the current main branch with:
+- Choose **Move to Vibe Kanban** in a session header to create a card for that
+  conversation and hide the session from the regular list. Repeating the action
+  reuses the same card.
+- A card's menu and the session header let you show or hide its linked session
+  in the sidebar.
+- **Settings → Vibe Kanban → Show Vibe Kanban sessions in the sidebar** controls
+  all linked sessions, including future ones. It defaults to off.
+- Board settings can enable an optional card section above the native thread
+  list. Select **Vibe Kanban above threads** as the sidebar layout to use it.
 
-```sh
-bb plugin install git:https://github.com/MayankBansal12/bb-plugin-triage.git@main
-```
+## Local development
 
-This tracks development on `main`.
-
-## Development
+Requires BB 0.42+ with a compatible Plugin SDK 0.4.47 runtime and a configured
+agent provider. Provider accounts and usage charges still apply. Cards, labels,
+priorities, and update history live in BB's plugin-owned SQLite database; there
+is no separate service or account. Browser notifications require permission.
 
 ```sh
 npm ci
-bb plugin install .
-bb plugin dev
+npm run typecheck
+npm test
+bb plugin build
+bb plugin install . --yes
+bb plugin dev .
 ```
 
-The plugin stores its board in BB's plugin-owned SQLite database. Worker
-threads default to hidden sidebar visibility and remain directly
-openable from their cards.
-
-## Agent CLI
+The local plugin ID and CLI command are `vibe-kanban`.
 
 ```sh
-bb triage list
-bb triage show 42
-bb triage run 42
-bb triage move 42 "Review" --summary "Implementation is ready"
-bb triage stages
+bb vibe-kanban list
+bb vibe-kanban show 42
+bb vibe-kanban run 42
+bb vibe-kanban move 42 "In Review" --summary "Implementation is ready"
+bb vibe-kanban stages
 ```
-
-## Sessions and the sidebar
-
-- Open a session and choose **Move to Triage** in its header. Triage creates a
-  card for the existing conversation and hides it from the regular session list.
-  Repeating the action reuses the same card; it never starts another agent.
-- Linked cards and the session header's **Triage #…** menu show either
-  **Show session in sidebar** or **Hide session from sidebar**, based on current visibility.
-  Showing a session keeps its Triage card and history.
-- In **Settings → Triage**, enable **Show Triage sessions in the sidebar** to show
-  all existing linked sessions and future task sessions in the regular session
-  list. It defaults to **off**. Changing it applies to all linked sessions;
-  individual show/hide actions override it until the next setting change.
-- **Triage settings → Show Triage in sidebar** controls the separate, default-off card section.
-  When BB uses the **Triage above threads** sidebar layout, it also provides a
-  **Move current session to Triage** control. With another sidebar plugin,
-  use the session header action.
-
-Imported sessions receive their assigned Triage agent tool and instructions on
-subsequent agent configuration. Importing does not interrupt a running turn.
-
-## Board controls
-
-- **Triage settings** lets you rename stages and reorder them with drag handles
-  (or focus a handle and use the up/down arrow keys).
-- **Updates** opens on **Recent**, showing newest events first, grouped by day.
-  Needs you, Running, and Pending show current task states. Opening a task marks
-  its updates read; **Mark all read** clears the remaining unread updates.
-- Search the project picker by name. Selecting a project selects its configured
-  default machine when available; select **All machines** to widen the view.
-  The personal project is labeled **Personal**.
-
-## Compatibility and verification
-
-Requires BB 0.42+ and a compatible Plugin SDK 0.4.47 runtime. For a reproducible
-checkout, run `npm ci`, `npm run typecheck`, `npm test`, and `bb plugin build`.
-The GitHub Actions workflow checks types, tests, and production dependencies.
-
-New cards start in To Do. Agent execution moves them to In Progress; agents are
-instructed to explicitly report completion or a need for attention. Ending a turn
-alone does not mark work complete. Scheduled tasks require BB and Triage to be
-running; overdue work is picked up when the scheduler resumes.
 
 ## License
 

@@ -1,5 +1,5 @@
 /**
- * Coordination between Triage's mount points. The board, the title-bar header
+ * Coordination between Vibe Kanban's mount points. The board, the title-bar header
  * and the sidebar list are separate React roots in the host shell, so what one
  * needs to tell another travels through module state.
  */
@@ -40,7 +40,7 @@ export function usePendingOpenTaskDetail(handler: (taskNumber: number) => void):
 }
 
 /**
- * Every mounted surface hears the same `triage` signal on its own subscription.
+ * Every mounted surface hears the same `vibe-kanban` signal on its own subscription.
  * The store collapses concurrent fetches but still pays for a second round trip
  * afterwards, so the first caller for an event claims the refresh and the rest
  * skip it. An unstamped payload always claims: a spare fetch beats a stale board.
@@ -52,7 +52,7 @@ export function usePendingOpenTaskDetail(handler: (taskNumber: number) => void):
  */
 let claimedAt: number | null = null;
 
-export function claimTriageRefresh(payload: unknown): boolean {
+export function claimKanbanRefresh(payload: unknown): boolean {
   const at = (payload as { at?: unknown } | null | undefined)?.at;
   if (typeof at !== "number") return true;
   if (at === claimedAt) return false;

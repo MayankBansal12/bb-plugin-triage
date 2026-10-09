@@ -7,7 +7,7 @@ import {
   unreadIds,
   type CardRow,
 } from "../lib/notification-feed.ts";
-import type { Task, TriageNotification } from "../lib/triage-types.ts";
+import type { Task, KanbanNotification } from "../lib/vibe-kanban-types.ts";
 
 /* ---------------------------------------------------------------------------
    Fixtures
@@ -20,8 +20,8 @@ function nid(): string {
 }
 
 function notification(
-  overrides: Partial<TriageNotification> & { action: string },
-): TriageNotification {
+  overrides: Partial<KanbanNotification> & { action: string },
+): KanbanNotification {
   return {
     id: nid(),
     taskNumber: null,

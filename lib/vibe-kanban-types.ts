@@ -32,6 +32,10 @@ export type RunState =
   | "completed"
   | "stopped";
 
+export type Priority = "none" | "urgent" | "high" | "medium" | "low";
+export type LabelColor = "gray" | "blue" | "green" | "amber" | "red" | "purple";
+export interface Label { id: string; name: string; color: LabelColor; }
+
 export interface Task {
   id: string;
   number: number;
@@ -50,6 +54,10 @@ export interface Task {
   scheduledAt: number | null;
   threadId: string | null;
   sidebarVisible?: boolean | null;
+  priority?: Priority;
+  labels?: Label[];
+  childThreadCount?: number | null;
+  agentStatus?: "starting" | "active" | "idle" | "error" | "unknown" | null;
   runState: RunState;
   attentionReason: string | null;
   readAt: number | null;
@@ -73,7 +81,7 @@ export interface MachineOption {
 
 export type NotificationLevel = "info" | "success" | "attention";
 
-export interface TriageNotification {
+export interface KanbanNotification {
   id: string;
   taskNumber: number | null;
   /** Short action phrase, e.g. "Moved to In Review". */
@@ -103,10 +111,11 @@ export interface AgentOptions {
 }
 
 export interface Snapshot {
+  labels: Label[];
   stages: Stage[];
   tasks: Task[];
   projects: ProjectOption[];
   machines: MachineOption[];
-  notifications: TriageNotification[];
+  notifications: KanbanNotification[];
   unreadCount: number;
 }
