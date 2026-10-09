@@ -1,6 +1,6 @@
 import type { StatusTone } from "../components/ui/status-dot";
-import { isPending, isTaskRunning, needsAttention } from "./triage-format";
-import type { NotificationLevel, Task, TriageNotification } from "./triage-types";
+import { isPending, isTaskRunning, needsAttention } from "./vibe-kanban-format";
+import type { NotificationLevel, Task, KanbanNotification } from "./vibe-kanban-types";
 
 /** How many history rows survive the fold; past this the feed is archaeology. */
 export const FEED_LIMIT = 40;
@@ -97,7 +97,7 @@ export function groupByDay(rows: FeedRow[]): { bucket: string; items: FeedRow[] 
  * things to read. Consecutive events for the same card and action fold into
  * one row that keeps the newest stamp.
  */
-export function foldRuns(notifications: TriageNotification[]): FeedRow[] {
+export function foldRuns(notifications: KanbanNotification[]): FeedRow[] {
   const rows: FeedRow[] = [];
   for (const notification of notifications) {
     const last = rows.at(-1);
@@ -158,7 +158,7 @@ export function attentionRank(task: Task): number {
  */
 export function buildAttention(
   tasks: Task[],
-  notifications: TriageNotification[],
+  notifications: KanbanNotification[],
 ): { rows: CardRow[]; absorbed: ReadonlySet<string> } {
   const rows = tasks.filter(needsAttention).map(toCardRow);
   const byNumber = new Map(rows.map((row) => [row.task.number, row]));
@@ -184,6 +184,6 @@ export function buildAttention(
  * popover's contents at open so a delayed mark-read only touches what was
  * visible at that glance, never a notification that arrived afterwards.
  */
-export function unreadIds(notifications: TriageNotification[]): string[] {
+export function unreadIds(notifications: KanbanNotification[]): string[] {
   return notifications.filter((n) => n.readAt === null).map((n) => n.id);
 }

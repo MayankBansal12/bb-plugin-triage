@@ -42,6 +42,11 @@ export const newThreadRequestSchema = z
   })
   .strict();
 
+const prioritySchema = z.enum(["none", "urgent", "high", "medium", "low"]);
+const labelColorSchema = z.enum(["gray", "blue", "green", "amber", "red", "purple"]);
+const labelSchema = z.object({ id: z.string(), name: z.string(), color: labelColorSchema });
+const labelIdsSchema = z.array(z.string().min(1)).max(20);
+
 const taskSchema = z.object({
   id: z.string(),
   number: z.number().int().positive(),
@@ -60,6 +65,10 @@ const taskSchema = z.object({
   scheduledAt: z.number().int().nullable(),
   threadId: z.string().nullable(),
   sidebarVisible: z.boolean().nullable().default(null),
+  priority: prioritySchema,
+  labels: z.array(labelSchema),
+  childThreadCount: z.number().int().nonnegative().nullable().default(null),
+  agentStatus: z.enum(["starting", "active", "idle", "error", "unknown"]).nullable().default(null),
   runState: z.enum([
     "queued",
     "scheduled",
@@ -124,6 +133,7 @@ export const rpcContract = defineRpcContract({
     input: z.null(),
     output: z.object({
       stages: z.array(stageSchema),
+      labels: z.array(labelSchema),
       tasks: z.array(taskSchema),
       projects: z.array(projectOptionSchema),
       machines: z.array(machineOptionSchema),
@@ -151,9 +161,27 @@ export const rpcContract = defineRpcContract({
         stageId: z.string().min(1),
         scheduledAt: z.number().int().nullable(),
         runNow: z.boolean(),
+        priority: prioritySchema.default("none"),
+        labelIds: labelIdsSchema.default([]),
         request: newThreadRequestSchema,
       })
       .strict(),
+    output: taskSchema,
+  },
+  createLabel: {
+    input: z.object({ name: z.string().trim().min(1).max(40), color: labelColorSchema }).strict(),
+    output: labelSchema,
+  },
+  updateLabel: {
+    input: z.object({ id: z.string().min(1), name: z.string().trim().min(1).max(40), color: labelColorSchema }).strict(),
+    output: labelSchema,
+  },
+  deleteLabel: {
+    input: z.object({ id: z.string().min(1) }).strict(),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  setTaskMetadata: {
+    input: z.object({ number: z.number().int().positive(), priority: prioritySchema.optional(), labelIds: labelIdsSchema.optional() }).strict(),
     output: taskSchema,
   },
   moveTask: {
@@ -286,6 +314,7 @@ interface TaskRow {
   created_at: number;
   updated_at: number;
   settled_at: number | null;
+  priority: z.infer<typeof prioritySchema>;
 }
 
 interface NotificationRow {
@@ -301,18 +330,18 @@ interface NotificationRow {
 }
 
 const migrations = [
-  `CREATE TABLE IF NOT EXISTS triage_stages (
+  `CREATE TABLE IF NOT EXISTS vibe_kanban_stages (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL COLLATE NOCASE UNIQUE,
     position INTEGER NOT NULL UNIQUE,
     system_role TEXT UNIQUE CHECK (system_role IN ('intake', 'active', 'attention', 'done') OR system_role IS NULL)
   )`,
-  `CREATE TABLE IF NOT EXISTS triage_tasks (
+  `CREATE TABLE IF NOT EXISTS vibe_kanban_tasks (
     id TEXT PRIMARY KEY,
     number INTEGER NOT NULL UNIQUE,
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    stage_id TEXT NOT NULL REFERENCES triage_stages(id),
+    stage_id TEXT NOT NULL REFERENCES vibe_kanban_stages(id),
     project_id TEXT NOT NULL,
     project_name TEXT NOT NULL,
     machine_id TEXT,
@@ -327,17 +356,17 @@ const migrations = [
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
-  `CREATE INDEX IF NOT EXISTS triage_tasks_due_idx ON triage_tasks(run_state, scheduled_at)`,
-  `CREATE INDEX IF NOT EXISTS triage_tasks_thread_idx ON triage_tasks(thread_id)`,
-  `CREATE TABLE IF NOT EXISTS triage_events (
+  `CREATE INDEX IF NOT EXISTS vibe_kanban_tasks_due_idx ON vibe_kanban_tasks(run_state, scheduled_at)`,
+  `CREATE INDEX IF NOT EXISTS vibe_kanban_tasks_thread_idx ON vibe_kanban_tasks(thread_id)`,
+  `CREATE TABLE IF NOT EXISTS vibe_kanban_events (
     id TEXT PRIMARY KEY,
-    task_id TEXT NOT NULL REFERENCES triage_tasks(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL REFERENCES vibe_kanban_tasks(id) ON DELETE CASCADE,
     actor TEXT NOT NULL,
     event TEXT NOT NULL,
     summary TEXT,
     created_at INTEGER NOT NULL
   )`,
-  `CREATE TABLE IF NOT EXISTS triage_notifications (
+  `CREATE TABLE IF NOT EXISTS vibe_kanban_notifications (
     id TEXT PRIMARY KEY,
     task_number INTEGER,
     title TEXT NOT NULL,
@@ -346,24 +375,36 @@ const migrations = [
     read_at INTEGER,
     created_at INTEGER NOT NULL
   )`,
-  `INSERT OR IGNORE INTO triage_stages (id, name, position, system_role) VALUES
+  `INSERT OR IGNORE INTO vibe_kanban_stages (id, name, position, system_role) VALUES
     ('stage-todo', 'To Do', 100, 'intake'),
     ('stage-progress', 'In Progress', 200, 'active'),
-    ('stage-attention', 'Human Review', 300, 'attention'),
-    ('stage-completed', 'Completed', 400, 'done')`,
-  `CREATE TABLE IF NOT EXISTS triage_meta (
+    ('stage-attention', 'In Review', 300, 'attention'),
+    ('stage-completed', 'Done', 400, 'done')`,
+  `CREATE TABLE IF NOT EXISTS vibe_kanban_meta (
     key TEXT PRIMARY KEY,
     value INTEGER NOT NULL
   )`,
-  `INSERT OR IGNORE INTO triage_meta (key, value)
-    SELECT 'next_task_number', COALESCE(MAX(number), 0) + 1 FROM triage_tasks`,
+  `INSERT OR IGNORE INTO vibe_kanban_meta (key, value)
+    SELECT 'next_task_number', COALESCE(MAX(number), 0) + 1 FROM vibe_kanban_tasks`,
   // The notification list shows "what happened" above "which card it happened
   // to", so both are stored rather than parsed back out of the prose title.
-  `ALTER TABLE triage_notifications ADD COLUMN action TEXT`,
-  `ALTER TABLE triage_notifications ADD COLUMN task_title TEXT`,
+  `ALTER TABLE vibe_kanban_notifications ADD COLUMN action TEXT`,
+  `ALTER TABLE vibe_kanban_notifications ADD COLUMN task_title TEXT`,
   // Settled is orthogonal to workflow stage: archive a resolved card without losing its column.
-  `ALTER TABLE triage_tasks ADD COLUMN settled_at INTEGER`,
-  `ALTER TABLE triage_tasks ADD COLUMN read_at INTEGER`,
+  `ALTER TABLE vibe_kanban_tasks ADD COLUMN settled_at INTEGER`,
+  `ALTER TABLE vibe_kanban_tasks ADD COLUMN read_at INTEGER`,
+  `ALTER TABLE vibe_kanban_tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'none' CHECK (priority IN ('none','urgent','high','medium','low'))`,
+  `CREATE TABLE vibe_kanban_labels (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    color TEXT NOT NULL CHECK (color IN ('gray','blue','green','amber','red','purple'))
+  )`,
+  `CREATE TABLE vibe_kanban_task_labels (
+    task_id TEXT NOT NULL REFERENCES vibe_kanban_tasks(id) ON DELETE CASCADE,
+    label_id TEXT NOT NULL REFERENCES vibe_kanban_labels(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, label_id)
+  )`,
+  `INSERT OR IGNORE INTO vibe_kanban_stages (id, name, position, system_role) VALUES ('stage-backlog', 'Backlog', 0, NULL)`,
 ];
 
 function toStage(row: StageRow) {
@@ -375,7 +416,7 @@ function toStage(row: StageRow) {
   };
 }
 
-function toTask(row: TaskRow) {
+function toStoredTask(row: TaskRow) {
   const storedRequest = newThreadRequestSchema.safeParse(JSON.parse(row.request_json));
   const environment = storedRequest.success ? storedRequest.data.environment : null;
   const workspace = environment && typeof environment.workspace === "object" && environment.workspace !== null ? environment.workspace as Record<string, unknown> : null;
@@ -391,6 +432,7 @@ function toTask(row: TaskRow) {
     id: row.id,
     number: row.number,
     title: row.title,
+    priority: row.priority,
     description: row.description,
     stageId: row.stage_id,
     projectId: row.project_id,
@@ -413,10 +455,10 @@ function toTask(row: TaskRow) {
   };
 }
 
-/** Recover a short action phrase from a legacy "Triage #12 started" title. */
+/** Recover a short action phrase from a legacy "Vibe Kanban #12 started" title. */
 function actionFromTitle(title: string, taskNumber: number | null): string {
   if (taskNumber === null) return title;
-  const stripped = title.replace(new RegExp(`^Triage #${taskNumber}\\s+`), "");
+  const stripped = title.replace(new RegExp(`^Vibe Kanban #${taskNumber}\\s+`), "");
   if (stripped === title) return title;
   return stripped.charAt(0).toUpperCase() + stripped.slice(1);
 }
@@ -463,15 +505,15 @@ export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
     showThreadsInSidebar: {
       type: "boolean",
-      label: "Show Triage sessions in the sidebar",
-      description: "Show linked sessions in the regular sidebar list. Changing this applies to all existing Triage sessions; individual sessions can also be shown or hidden from their Triage menu.",
+      label: "Show Vibe Kanban sessions in the sidebar",
+      description: "Show linked sessions in the regular sidebar list. Changing this applies to all existing Vibe Kanban sessions; individual sessions can also be shown or hidden from their Vibe Kanban menu.",
       default: false,
     },
     showInSidebar: {
       type: "boolean",
-      label: "Show Triage in the sidebar",
+      label: "Show Vibe Kanban in the sidebar",
       description:
-        "List your Triage cards above the threads in BB's sidebar, ordered by what needs you first.",
+        "List your Vibe Kanban cards above the threads in BB's sidebar, ordered by what needs you first.",
       default: false,
     },
   });
@@ -509,37 +551,54 @@ export default async function plugin(bb: BbPluginApi) {
   settings.onChange((next, prev) => {
     showThreadsInSidebar = next.showThreadsInSidebar;
     if (next.showThreadsInSidebar === prev.showThreadsInSidebar) return;
-    const rows = db.prepare("SELECT thread_id FROM triage_tasks WHERE thread_id IS NOT NULL").all() as { thread_id: string }[];
+    const rows = db.prepare("SELECT thread_id FROM vibe_kanban_tasks WHERE thread_id IS NOT NULL").all() as { thread_id: string }[];
     for (const row of rows) pendingVisibility.set(row.thread_id, { visible: showThreadsInSidebar });
     void syncSidebarVisibility();
   });
 
   const listStages = () =>
     (db
-      .prepare("SELECT id, name, position, system_role FROM triage_stages ORDER BY position")
+      .prepare("SELECT id, name, position, system_role FROM vibe_kanban_stages ORDER BY position")
       .all() as StageRow[]).map(toStage);
+
+  const listLabels = () => db.prepare("SELECT * FROM vibe_kanban_labels ORDER BY name COLLATE NOCASE").all() as z.infer<typeof labelSchema>[];
+  const toTask = (row: TaskRow) => ({
+    ...toStoredTask(row),
+    labels: db.prepare("SELECT l.* FROM vibe_kanban_labels l JOIN vibe_kanban_task_labels tl ON tl.label_id = l.id WHERE tl.task_id = ? ORDER BY l.name COLLATE NOCASE").all(row.id) as z.infer<typeof labelSchema>[],
+    childThreadCount: row.thread_id ? null : 0,
+    agentStatus: null as "starting" | "active" | "idle" | "error" | "unknown" | null,
+  });
+  const validateLabelIds = (ids: string[]) => {
+    for (const id of ids) {
+      if (!db.prepare("SELECT id FROM vibe_kanban_labels WHERE id = ?").get(id)) throw new Error("This label no longer exists. Refresh and try again.");
+    }
+  };
+  const assignLabels = (taskId: string, ids: string[]) => {
+    db.prepare("DELETE FROM vibe_kanban_task_labels WHERE task_id = ?").run(taskId);
+    for (const id of new Set(ids)) db.prepare("INSERT INTO vibe_kanban_task_labels (task_id, label_id) VALUES (?, ?)").run(taskId, id);
+  };
 
   const listTasks = () =>
     (db
-      .prepare("SELECT * FROM triage_tasks ORDER BY updated_at DESC, number DESC")
+      .prepare("SELECT * FROM vibe_kanban_tasks ORDER BY updated_at DESC, number DESC")
       .all() as TaskRow[]).map(toTask);
 
   const getTaskRow = (number: number) => {
     const row = db
-      .prepare("SELECT * FROM triage_tasks WHERE number = ?")
+      .prepare("SELECT * FROM vibe_kanban_tasks WHERE number = ?")
       .get(number) as TaskRow | undefined;
-    if (!row) throw new Error(`Triage #${number} was not found`);
+    if (!row) throw new Error(`Vibe Kanban #${number} was not found`);
     return row;
   };
 
   const getTaskByThread = (threadId: string) =>
-    db.prepare("SELECT * FROM triage_tasks WHERE thread_id = ?").get(threadId) as
+    db.prepare("SELECT * FROM vibe_kanban_tasks WHERE thread_id = ?").get(threadId) as
       | TaskRow
       | undefined;
 
   const getStageRow = (id: string) => {
     const row = db
-      .prepare("SELECT id, name, position, system_role FROM triage_stages WHERE id = ?")
+      .prepare("SELECT id, name, position, system_role FROM vibe_kanban_stages WHERE id = ?")
       .get(id) as StageRow | undefined;
     if (!row) throw new Error("Stage was not found");
     return row;
@@ -547,7 +606,7 @@ export default async function plugin(bb: BbPluginApi) {
 
   const getSystemStage = (role: StageRow["system_role"]) => {
     const row = db
-      .prepare("SELECT id, name, position, system_role FROM triage_stages WHERE system_role = ?")
+      .prepare("SELECT id, name, position, system_role FROM vibe_kanban_stages WHERE system_role = ?")
       .get(role) as StageRow | undefined;
     if (!row) throw new Error(`The ${role} stage is not configured`);
     return row;
@@ -560,7 +619,7 @@ export default async function plugin(bb: BbPluginApi) {
     summary?: string,
   ) => {
     db.prepare(
-      "INSERT INTO triage_events (id, task_id, actor, event, summary, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO vibe_kanban_events (id, task_id, actor, event, summary, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(crypto.randomUUID(), taskId, actor, event, summary ?? null, Date.now());
   };
 
@@ -572,7 +631,7 @@ export default async function plugin(bb: BbPluginApi) {
     body: string;
     level: "info" | "success" | "attention";
   }) => {
-    bb.realtime.publish("triage", {
+    bb.realtime.publish("vibe-kanban", {
       kind: "changed",
       at: Date.now(),
       ...(notification ? { notification } : {}),
@@ -590,9 +649,9 @@ export default async function plugin(bb: BbPluginApi) {
   }) => {
     const title = input.taskNumber === null
       ? input.action
-      : `Triage #${input.taskNumber} · ${input.action}`;
+      : `Vibe Kanban #${input.taskNumber} · ${input.action}`;
     db.prepare(
-      "INSERT INTO triage_notifications (id, task_number, action, task_title, title, body, level, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)",
+      "INSERT INTO vibe_kanban_notifications (id, task_number, action, task_title, title, body, level, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)",
     ).run(
       crypto.randomUUID(),
       input.taskNumber,
@@ -625,7 +684,7 @@ export default async function plugin(bb: BbPluginApi) {
     const now = Date.now();
     const nextRunState = stage.system_role === "done" ? "completed" : task.run_state;
     db.prepare(
-      `UPDATE triage_tasks SET stage_id = ?, run_state = ?,
+      `UPDATE vibe_kanban_tasks SET stage_id = ?, run_state = ?,
        attention_reason = CASE WHEN ? = 'attention' THEN attention_reason ELSE NULL END,
        read_at = CASE WHEN ? = 'agent' THEN NULL ELSE read_at END, updated_at = ? WHERE id = ?`,
     ).run(stage.id, nextRunState, stage.system_role, actor, now, task.id);
@@ -671,8 +730,8 @@ export default async function plugin(bb: BbPluginApi) {
     const attention = getSystemStage("attention").name;
     const done = getSystemStage("done").name;
     return `Available stages: ${listStages().map((stage) => stage.name).join(", ")}. ` +
-      `Keep the card's stage accurate using triage_move_task. ${intake} means work has not started; use ${active} while working, including when resuming a completed task for new requests. ` +
-      `Before your final response, call triage_move_task with ${done} when the requested scope is satisfied, relevant verification passed, and no required work remains. Do not leave finished work in ${intake} or ${active}. ` +
+      `Keep the card's stage accurate using vibe_kanban_move_task. ${intake} means work has not started; use ${active} while working, including when resuming a completed task for new requests. ` +
+      `Before your final response, call vibe_kanban_move_task with ${done} when the requested scope is satisfied, relevant verification passed, and no required work remains. Do not leave finished work in ${intake} or ${active}. ` +
       `Use ${attention} when a person must approve, decide, provide access, or interpret incomplete verification. Explain what is needed in the summary. ` +
       `A turn ending does not by itself mean the task is complete. For a user-created stage, use it only when its name unambiguously matches the work state; otherwise use ${attention} and explain why.`;
   };
@@ -682,7 +741,7 @@ export default async function plugin(bb: BbPluginApi) {
     if (current.thread_id) return toTask(current);
     const claimed = db
       .prepare(
-        "UPDATE triage_tasks SET run_state = 'dispatching', scheduled_at = NULL, updated_at = ? WHERE id = ? AND thread_id IS NULL AND run_state IN ('queued','scheduled','failed')",
+        "UPDATE vibe_kanban_tasks SET run_state = 'dispatching', scheduled_at = NULL, updated_at = ? WHERE id = ? AND thread_id IS NULL AND run_state IN ('queued','scheduled','failed')",
       )
       .run(Date.now(), current.id);
     if (claimed.changes === 0) return toTask(getTaskRow(number));
@@ -704,7 +763,7 @@ export default async function plugin(bb: BbPluginApi) {
           type: "text" as const,
           visibility: "agent-only" as const,
           text:
-            `You are assigned to Triage #${number}. ${stageInstructions()}`,
+            `You are assigned to Vibe Kanban #${number}. ${stageInstructions()}`,
           mentions: [],
         },
       ];
@@ -712,13 +771,13 @@ export default async function plugin(bb: BbPluginApi) {
       const spawnArgs = {
         ...request,
         input,
-        title: `Triage #${number}: ${current.title}`,
+        title: `Vibe Kanban #${number}: ${current.title}`,
         visibility: showThreadsInSidebar ? "visible" as const : "hidden" as const,
       } as SpawnArgs;
       const thread = await bb.sdk.threads.spawn(spawnArgs);
       const activeStage = getSystemStage("active");
       db.prepare(
-        "UPDATE triage_tasks SET thread_id = ?, stage_id = ?, run_state = 'starting', attention_reason = NULL, updated_at = ? WHERE id = ?",
+        "UPDATE vibe_kanban_tasks SET thread_id = ?, stage_id = ?, run_state = 'starting', attention_reason = NULL, updated_at = ? WHERE id = ?",
       ).run(thread.id, activeStage.id, Date.now(), current.id);
       addEvent(current.id, "scheduler", "agent dispatched");
       notify({
@@ -733,7 +792,7 @@ export default async function plugin(bb: BbPluginApi) {
       const message = errorMessage(error);
       const attention = getSystemStage("attention");
       db.prepare(
-        "UPDATE triage_tasks SET stage_id = ?, run_state = 'failed', attention_reason = ?, read_at = NULL, updated_at = ? WHERE id = ?",
+        "UPDATE vibe_kanban_tasks SET stage_id = ?, run_state = 'failed', attention_reason = ?, read_at = NULL, updated_at = ? WHERE id = ?",
       ).run(attention.id, message, Date.now(), current.id);
       addEvent(current.id, "scheduler", "dispatch failed", message);
       notify({
@@ -770,11 +829,11 @@ export default async function plugin(bb: BbPluginApi) {
     }));
     const notifications = (
       db
-        .prepare("SELECT * FROM triage_notifications ORDER BY created_at DESC LIMIT 50")
+        .prepare("SELECT * FROM vibe_kanban_notifications ORDER BY created_at DESC LIMIT 50")
         .all() as NotificationRow[]
     ).map(toNotification);
     const unreadCount = (
-      db.prepare("SELECT COUNT(*) AS count FROM triage_notifications WHERE read_at IS NULL").get() as {
+      db.prepare("SELECT COUNT(*) AS count FROM vibe_kanban_notifications WHERE read_at IS NULL").get() as {
         count: number;
       }
     ).count;
@@ -801,9 +860,14 @@ export default async function plugin(bb: BbPluginApi) {
           // Keep the saved workspace description when the host is unavailable.
         }
       }
-      return { ...task, branchName, sidebarVisible: thread ? thread.visibility === "visible" : null };
+      const childThreadCount = task.threadId
+        ? await bb.sdk.threads.childSummary({ threadId: task.threadId }).then((summary) => summary.nonDeletedChildCount).catch(() => null)
+        : 0;
+      const agentStatus = thread && ["starting", "active", "idle", "error"].includes(thread.status)
+        ? thread.status as "starting" | "active" | "idle" | "error" : task.threadId ? "unknown" as const : null;
+      return { ...task, branchName, childThreadCount, agentStatus, sidebarVisible: thread ? thread.visibility === "visible" : null };
     }));
-    return { stages: listStages(), tasks, projects, machines, notifications, unreadCount };
+    return { stages: listStages(), labels: listLabels(), tasks, projects, machines, notifications, unreadCount };
   };
 
   /**
@@ -841,7 +905,7 @@ export default async function plugin(bb: BbPluginApi) {
         }
       } catch (error) {
         bb.log.warn(
-          `Triage could not list models for ${provider.id}: ${errorMessage(error)}`,
+          `Vibe Kanban could not list models for ${provider.id}: ${errorMessage(error)}`,
         );
       }
     }
@@ -861,7 +925,7 @@ export default async function plugin(bb: BbPluginApi) {
     async importThread({ threadId }) {
       const thread = await bb.sdk.threads.get({ threadId });
       if (thread.deletedAt !== null || thread.archivedAt !== null) {
-        throw new Error("Open an unarchived session before moving it to Triage");
+        throw new Error("Open an unarchived session before moving it to Vibe Kanban");
       }
       const existing = getTaskByThread(threadId);
       if (existing) {
@@ -878,12 +942,12 @@ export default async function plugin(bb: BbPluginApi) {
         const duplicate = getTaskByThread(threadId);
         if (duplicate) return duplicate;
         const { value: number } = db.prepare(
-          "SELECT value FROM triage_meta WHERE key = 'next_task_number'",
+          "SELECT value FROM vibe_kanban_meta WHERE key = 'next_task_number'",
         ).get() as { value: number };
         const now = Date.now();
         const active = thread.status === "active" || thread.status === "starting";
         const stage = getSystemStage(active ? "active" : "intake");
-        db.prepare(`INSERT INTO triage_tasks (
+        db.prepare(`INSERT INTO vibe_kanban_tasks (
           id, number, title, description, stage_id, project_id, project_name,
           machine_id, machine_name, provider_id, model, request_json,
           thread_id, run_state, created_at, updated_at
@@ -894,9 +958,9 @@ export default async function plugin(bb: BbPluginApi) {
           thread.providerId, execution?.model ?? "Default model", threadId,
           active ? "working" : thread.status === "error" ? "failed" : "idle", now, now,
         );
-        db.prepare("UPDATE triage_meta SET value = value + 1 WHERE key = 'next_task_number'").run();
+        db.prepare("UPDATE vibe_kanban_meta SET value = value + 1 WHERE key = 'next_task_number'").run();
         const created = getTaskRow(number);
-        addEvent(created.id, "user", "moved session to triage");
+        addEvent(created.id, "user", "moved session to vibe-kanban");
         return created;
       })();
       // Persist the card before hiding its session so a failed host update
@@ -917,23 +981,28 @@ export default async function plugin(bb: BbPluginApi) {
       return { ok: true as const };
     },
     async createTask(input) {
+      if (input.scheduledAt !== null && input.scheduledAt <= Date.now()) throw new Error("Choose a future date and time");
+      if (input.runNow && input.scheduledAt !== null) throw new Error("Choose either Run now or Schedule");
+      validateLabelIds(input.labelIds);
       getStageRow(input.stageId);
       const project = await bb.sdk.projects.get({ projectId: input.request.projectId });
       const machine = await resolveMachine(input.request.environment);
       const allocateNumber = db.transaction(() => {
         const row = db
-          .prepare("SELECT value FROM triage_meta WHERE key = 'next_task_number'")
+          .prepare("SELECT value FROM vibe_kanban_meta WHERE key = 'next_task_number'")
           .get() as { value: number } | undefined;
-        if (!row) throw new Error("Triage number counter is unavailable");
-        db.prepare("UPDATE triage_meta SET value = value + 1 WHERE key = 'next_task_number'").run();
+        if (!row) throw new Error("Vibe Kanban number counter is unavailable");
+        db.prepare("UPDATE vibe_kanban_meta SET value = value + 1 WHERE key = 'next_task_number'").run();
         return row.value;
       });
       const nextNumber = allocateNumber();
       const now = Date.now();
       const runState = input.scheduledAt === null ? "queued" : "scheduled";
       const id = crypto.randomUUID();
+      db.transaction(() => {
+      validateLabelIds(input.labelIds);
       db.prepare(
-        `INSERT INTO triage_tasks (
+        `INSERT INTO vibe_kanban_tasks (
           id, number, title, description, stage_id, project_id, project_name,
           machine_id, machine_name, provider_id, model, request_json,
           scheduled_at, thread_id, run_state, attention_reason, created_at, updated_at
@@ -956,10 +1025,45 @@ export default async function plugin(bb: BbPluginApi) {
         now,
         now,
       );
+      db.prepare("UPDATE vibe_kanban_tasks SET priority = ? WHERE id = ?").run(input.priority, id);
+      assignLabels(id, input.labelIds);
+      })();
       addEvent(id, "user", input.scheduledAt === null ? "created" : "scheduled");
       publish();
       if (input.runNow) return dispatchTask(nextNumber, true);
       return toTask(getTaskRow(nextNumber));
+    },
+    createLabel({ name, color }) {
+      if (listLabels().some((label) => label.name.toLowerCase() === name.toLowerCase())) throw new Error("A label with this name already exists");
+      const label = { id: crypto.randomUUID(), name, color };
+      db.prepare("INSERT INTO vibe_kanban_labels (id, name, color) VALUES (?, ?, ?)").run(label.id, name, color);
+      publish();
+      return label;
+    },
+    updateLabel({ id, name, color }) {
+      if (!listLabels().some((label) => label.id === id)) throw new Error("Label not found");
+      if (listLabels().some((label) => label.id !== id && label.name.toLowerCase() === name.toLowerCase())) throw new Error("A label with this name already exists");
+      db.prepare("UPDATE vibe_kanban_labels SET name = ?, color = ? WHERE id = ?").run(name, color, id);
+      publish();
+      return { id, name, color };
+    },
+    deleteLabel({ id }) {
+      db.transaction(() => {
+        db.prepare("DELETE FROM vibe_kanban_task_labels WHERE label_id = ?").run(id);
+        db.prepare("DELETE FROM vibe_kanban_labels WHERE id = ?").run(id);
+      })();
+      publish();
+      return { ok: true as const };
+    },
+    setTaskMetadata({ number, priority, labelIds }) {
+      const task = getTaskRow(number);
+      db.transaction(() => {
+        if (labelIds) { validateLabelIds(labelIds); assignLabels(task.id, labelIds); }
+        if (priority !== undefined) db.prepare("UPDATE vibe_kanban_tasks SET priority = ? WHERE id = ?").run(priority, task.id);
+        db.prepare("UPDATE vibe_kanban_tasks SET updated_at = ? WHERE id = ?").run(Date.now(), task.id);
+      })();
+      publish();
+      return toTask(getTaskRow(number));
     },
     moveTask: ({ number, stageId, summary }) =>
       moveTask(number, stageId, "user", summary, false),
@@ -967,7 +1071,7 @@ export default async function plugin(bb: BbPluginApi) {
       const task = getTaskRow(number);
       const now = Date.now();
       db.prepare(
-        "UPDATE triage_tasks SET settled_at = ?, updated_at = ? WHERE id = ?",
+        "UPDATE vibe_kanban_tasks SET settled_at = ?, updated_at = ? WHERE id = ?",
       ).run(settled ? now : null, now, task.id);
       addEvent(task.id, "user", settled ? "marked settled" : "reopened");
       publish();
@@ -975,7 +1079,7 @@ export default async function plugin(bb: BbPluginApi) {
     },
     setTaskRead({ number, read }) {
       const task = getTaskRow(number);
-      db.prepare("UPDATE triage_tasks SET read_at = ? WHERE id = ?").run(read ? Date.now() : null, task.id);
+      db.prepare("UPDATE vibe_kanban_tasks SET read_at = ? WHERE id = ?").run(read ? Date.now() : null, task.id);
       publish();
       return toTask(getTaskRow(number));
     },
@@ -1051,7 +1155,7 @@ export default async function plugin(bb: BbPluginApi) {
         ? "completed"
         : editableRunState;
       db.prepare(
-        `UPDATE triage_tasks
+        `UPDATE vibe_kanban_tasks
          SET title = ?, description = ?, stage_id = ?, request_json = ?,
              project_id = ?, project_name = ?, machine_id = ?, machine_name = ?,
              provider_id = ?, model = ?,
@@ -1078,11 +1182,11 @@ export default async function plugin(bb: BbPluginApi) {
         try {
           await bb.sdk.threads.update({
             threadId: task.thread_id,
-            title: `Triage #${task.number}: ${input.title.trim()}`,
+            title: `Vibe Kanban #${task.number}: ${input.title.trim()}`,
           });
         } catch (error) {
           bb.log.warn(
-            `Updated Triage #${task.number}, but its thread title could not be synced: ${errorMessage(error)}`,
+            `Updated Vibe Kanban #${task.number}, but its thread title could not be synced: ${errorMessage(error)}`,
           );
         }
       }
@@ -1092,9 +1196,9 @@ export default async function plugin(bb: BbPluginApi) {
     async renameTask({ number, title }) {
       const task = getTaskRow(number);
       if (task.thread_id) {
-        await bb.sdk.threads.update({ threadId: task.thread_id, title: `Triage #${number}: ${title}` });
+        await bb.sdk.threads.update({ threadId: task.thread_id, title: `Vibe Kanban #${number}: ${title}` });
       }
-      db.prepare("UPDATE triage_tasks SET title = ?, updated_at = ? WHERE id = ?").run(title, Date.now(), task.id);
+      db.prepare("UPDATE vibe_kanban_tasks SET title = ?, updated_at = ? WHERE id = ?").run(title, Date.now(), task.id);
       addEvent(task.id, "user", "renamed task");
       publish();
       return toTask(getTaskRow(number));
@@ -1102,13 +1206,14 @@ export default async function plugin(bb: BbPluginApi) {
     runTask: ({ number }) => dispatchTask(number, true),
     async stopTask({ number }) {
       const task = getTaskRow(number);
-      if (!task.thread_id) throw new Error(`Triage #${number} has no agent thread to stop`);
-      if (!["dispatching", "starting", "working"].includes(task.run_state)) {
-        throw new Error(`Triage #${number} is not currently running`);
+      if (!task.thread_id) throw new Error(`Vibe Kanban #${number} has no agent thread to stop`);
+      const thread = await bb.sdk.threads.get({ threadId: task.thread_id });
+      if (thread.status !== "active" && thread.status !== "starting") {
+        throw new Error(`Vibe Kanban #${number} is not currently running`);
       }
       await bb.sdk.threads.stop({ threadId: task.thread_id });
       db.prepare(
-        "UPDATE triage_tasks SET run_state = 'stopped', updated_at = ? WHERE id = ?",
+        "UPDATE vibe_kanban_tasks SET run_state = 'stopped', updated_at = ? WHERE id = ?",
       ).run(Date.now(), task.id);
       addEvent(task.id, "user", "agent stopped");
       publish();
@@ -1119,20 +1224,21 @@ export default async function plugin(bb: BbPluginApi) {
       if (task.thread_id) pendingVisibility.delete(task.thread_id);
       db.transaction(() => {
         // Keep deletion correct even if a host has SQLite foreign keys disabled.
-        db.prepare("DELETE FROM triage_events WHERE task_id = ?").run(task.id);
-        db.prepare("DELETE FROM triage_tasks WHERE id = ?").run(task.id);
+        db.prepare("DELETE FROM vibe_kanban_events WHERE task_id = ?").run(task.id);
+        db.prepare("DELETE FROM vibe_kanban_task_labels WHERE task_id = ?").run(task.id);
+        db.prepare("DELETE FROM vibe_kanban_tasks WHERE id = ?").run(task.id);
       })();
       publish();
       return { ok: true as const };
     },
     createStage({ name }) {
       const position = (
-        db.prepare("SELECT COALESCE(MAX(position), 0) + 100 AS position FROM triage_stages").get() as {
+        db.prepare("SELECT COALESCE(MAX(position), 0) + 100 AS position FROM vibe_kanban_stages").get() as {
           position: number;
         }
       ).position;
       const id = crypto.randomUUID();
-      db.prepare("INSERT INTO triage_stages (id, name, position, system_role) VALUES (?, ?, ?, NULL)").run(
+      db.prepare("INSERT INTO vibe_kanban_stages (id, name, position, system_role) VALUES (?, ?, ?, NULL)").run(
         id,
         name.trim(),
         position,
@@ -1142,7 +1248,7 @@ export default async function plugin(bb: BbPluginApi) {
     },
     renameStage({ id, name }) {
       getStageRow(id);
-      db.prepare("UPDATE triage_stages SET name = ? WHERE id = ?").run(name.trim(), id);
+      db.prepare("UPDATE vibe_kanban_stages SET name = ? WHERE id = ?").run(name.trim(), id);
       publish();
       return toStage(getStageRow(id));
     },
@@ -1156,8 +1262,8 @@ export default async function plugin(bb: BbPluginApi) {
         const [moved] = stages.splice(index, 1);
         stages.splice(targetIndex, 0, moved!);
         db.transaction(() => {
-          stages.forEach((stage, position) => db.prepare("UPDATE triage_stages SET position = ? WHERE id = ?").run(-position - 1, stage.id));
-          stages.forEach((stage, position) => db.prepare("UPDATE triage_stages SET position = ? WHERE id = ?").run(position, stage.id));
+          stages.forEach((stage, position) => db.prepare("UPDATE vibe_kanban_stages SET position = ? WHERE id = ?").run(-position - 1, stage.id));
+          stages.forEach((stage, position) => db.prepare("UPDATE vibe_kanban_stages SET position = ? WHERE id = ?").run(position, stage.id));
         })();
         publish();
         return { stages: listStages() };
@@ -1168,12 +1274,12 @@ export default async function plugin(bb: BbPluginApi) {
         const first = stages[index]!;
         const second = stages[otherIndex]!;
         const swap = db.transaction(() => {
-          db.prepare("UPDATE triage_stages SET position = -1 WHERE id = ?").run(first.id);
-          db.prepare("UPDATE triage_stages SET position = ? WHERE id = ?").run(
+          db.prepare("UPDATE vibe_kanban_stages SET position = -1 WHERE id = ?").run(first.id);
+          db.prepare("UPDATE vibe_kanban_stages SET position = ? WHERE id = ?").run(
             first.position,
             second.id,
           );
-          db.prepare("UPDATE triage_stages SET position = ? WHERE id = ?").run(
+          db.prepare("UPDATE vibe_kanban_stages SET position = ? WHERE id = ?").run(
             second.position,
             first.id,
           );
@@ -1187,24 +1293,24 @@ export default async function plugin(bb: BbPluginApi) {
       const stage = getStageRow(id);
       if (stage.system_role) throw new Error("Core workflow stages can be renamed but not removed");
       const count = (
-        db.prepare("SELECT COUNT(*) AS count FROM triage_tasks WHERE stage_id = ?").get(id) as {
+        db.prepare("SELECT COUNT(*) AS count FROM vibe_kanban_tasks WHERE stage_id = ?").get(id) as {
           count: number;
         }
       ).count;
       if (count > 0) throw new Error("Move every card out of this stage before removing it");
-      db.prepare("DELETE FROM triage_stages WHERE id = ?").run(id);
+      db.prepare("DELETE FROM vibe_kanban_stages WHERE id = ?").run(id);
       publish();
       return { ok: true as const };
     },
     markNotificationsRead({ ids }) {
       if (ids === null) {
-        db.prepare("UPDATE triage_notifications SET read_at = ? WHERE read_at IS NULL").run(
+        db.prepare("UPDATE vibe_kanban_notifications SET read_at = ? WHERE read_at IS NULL").run(
           Date.now(),
         );
       } else if (ids.length > 0) {
         const placeholders = ids.map(() => "?").join(", ");
         db.prepare(
-          `UPDATE triage_notifications SET read_at = ? WHERE read_at IS NULL AND id IN (${placeholders})`,
+          `UPDATE vibe_kanban_notifications SET read_at = ? WHERE read_at IS NULL AND id IN (${placeholders})`,
         ).run(Date.now(), ...ids);
       }
       publish();
@@ -1212,44 +1318,44 @@ export default async function plugin(bb: BbPluginApi) {
     },
     deleteNotifications({ ids }) {
       const placeholders = ids.map(() => "?").join(", ");
-      db.prepare(`DELETE FROM triage_notifications WHERE id IN (${placeholders})`).run(...ids);
+      db.prepare(`DELETE FROM vibe_kanban_notifications WHERE id IN (${placeholders})`).run(...ids);
       publish();
       return { ok: true as const };
     },
   });
 
   bb.agents.registerTool({
-    name: "triage_move_task",
+    name: "vibe_kanban_move_task",
     description:
-      "Move the Triage card assigned to this BB thread into another workflow stage and leave a concise handoff summary.",
+      "Move the Vibe Kanban card assigned to this BB thread into another workflow stage and leave a concise handoff summary.",
     instructions:
       "Keep the assigned card accurate when work starts or resumes. Before the final response, move completed work to the completion stage or work requiring user input to the attention stage, with a concise summary.",
     presentation: {
       label: {
-        pending: "Updating the Triage card",
-        completed: "Updated the Triage card",
+        pending: "Updating the Vibe Kanban card",
+        completed: "Updated the Vibe Kanban card",
       },
     },
     parameters: z.object({
-      number: z.number().int().positive().describe("The number in Triage #42"),
+      number: z.number().int().positive().describe("The number in Vibe Kanban #42"),
       stage: z.string().trim().min(1).describe("The destination stage name"),
       summary: z.string().trim().min(1).max(2_000).describe("What changed or what the user needs to know"),
     }),
     execute({ number, stage, summary }, context) {
       const task = getTaskRow(number);
       if (task.thread_id !== context.threadId) {
-        throw new Error(`Triage #${number} is not assigned to this thread`);
+        throw new Error(`Vibe Kanban #${number} is not assigned to this thread`);
       }
       const destination = db
         .prepare(
-          "SELECT id, name, position, system_role FROM triage_stages WHERE name = ? COLLATE NOCASE",
+          "SELECT id, name, position, system_role FROM vibe_kanban_stages WHERE name = ? COLLATE NOCASE",
         )
         .get(stage) as StageRow | undefined;
       if (!destination) {
         throw new Error(`Unknown stage “${stage}”. Available stages: ${listStages().map((item) => item.name).join(", ")}`);
       }
       moveTask(number, destination.id, "agent", summary, true);
-      return `Moved Triage #${number} to ${destination.name}.`;
+      return `Moved Vibe Kanban #${number} to ${destination.name}.`;
     },
   });
 
@@ -1257,10 +1363,10 @@ export default async function plugin(bb: BbPluginApi) {
     const task = getTaskByThread(context.thread.id);
     if (!task) return { tools: [], skills: [] };
     return {
-      tools: ["triage_move_task"],
+      tools: ["vibe_kanban_move_task"],
       skills: [],
       instructions:
-        `You own Triage #${task.number}: ${task.title}. ` +
+        `You own Vibe Kanban #${task.number}: ${task.title}. ` +
         `Current stage: ${getStageRow(task.stage_id).name}. ` +
         stageInstructions(),
     };
@@ -1268,10 +1374,10 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.events.on("thread.active", ({ thread }) => {
     const task = getTaskByThread(thread.id);
-    if (!task) return;
+    if (!task) { if (thread.parentThreadId && getTaskByThread(thread.parentThreadId)) publish(); return; }
     const active = getSystemStage("active");
     db.prepare(
-      "UPDATE triage_tasks SET stage_id = ?, run_state = 'working', attention_reason = NULL, settled_at = NULL, updated_at = ? WHERE id = ?",
+      "UPDATE vibe_kanban_tasks SET stage_id = ?, run_state = 'working', attention_reason = NULL, settled_at = NULL, updated_at = ? WHERE id = ?",
     ).run(active.id, Date.now(), task.id);
     addEvent(task.id, "bb", "agent active");
     publish();
@@ -1279,12 +1385,12 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.events.on("thread.idle", ({ thread }) => {
     const task = getTaskByThread(thread.id);
-    if (!task) return;
+    if (!task) { if (thread.parentThreadId && getTaskByThread(thread.parentThreadId)) publish(); return; }
     if (task.run_state === "stopped" || getStageRow(task.stage_id).system_role === "done") {
       publish();
       return;
     }
-    db.prepare("UPDATE triage_tasks SET run_state = 'idle', read_at = NULL, updated_at = ? WHERE id = ?").run(
+    db.prepare("UPDATE vibe_kanban_tasks SET run_state = 'idle', read_at = NULL, updated_at = ? WHERE id = ?").run(
       Date.now(),
       task.id,
     );
@@ -1304,11 +1410,11 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.events.on("thread.failed", ({ thread, error }) => {
     const task = getTaskByThread(thread.id);
-    if (!task) return;
+    if (!task) { if (thread.parentThreadId && getTaskByThread(thread.parentThreadId)) publish(); return; }
     const attention = getSystemStage("attention");
     const reason = error?.trim() || "The assigned BB thread failed.";
     db.prepare(
-      "UPDATE triage_tasks SET stage_id = ?, run_state = 'failed', attention_reason = ?, updated_at = ? WHERE id = ?",
+      "UPDATE vibe_kanban_tasks SET stage_id = ?, run_state = 'failed', attention_reason = ?, updated_at = ? WHERE id = ?",
     ).run(attention.id, reason, Date.now(), task.id);
     addEvent(task.id, "bb", "agent failed", reason);
     notify({
@@ -1323,9 +1429,9 @@ export default async function plugin(bb: BbPluginApi) {
   bb.events.on("thread.deleted", ({ thread }) => {
     pendingVisibility.delete(thread.id);
     const task = getTaskByThread(thread.id);
-    if (!task) return;
+    if (!task) { if (thread.parentThreadId && getTaskByThread(thread.parentThreadId)) publish(); return; }
     db.prepare(
-      "UPDATE triage_tasks SET thread_id = NULL, run_state = 'stopped', attention_reason = 'The linked BB thread was deleted.', updated_at = ? WHERE id = ?",
+      "UPDATE vibe_kanban_tasks SET thread_id = NULL, run_state = 'stopped', attention_reason = 'The linked BB thread was deleted.', updated_at = ? WHERE id = ?",
     ).run(Date.now(), task.id);
     notify({
       taskNumber: task.number,
@@ -1337,14 +1443,14 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   bb.cli.register({
-    name: "triage",
-    summary: "List, inspect, run, and move Triage cards",
+    name: "vibe-kanban",
+    summary: "List, inspect, run, and move Vibe Kanban cards",
     commands: [
-      { name: "list", summary: "List Triage cards", usage: "bb triage list [--json]" },
-      { name: "show", summary: "Show a Triage card", usage: "bb triage show <number> [--json]" },
-      { name: "run", summary: "Run a Triage card now", usage: "bb triage run <number> [--json]" },
-      { name: "move", summary: "Move a Triage card", usage: "bb triage move <number> <stage> [--summary <text>] [--json]" },
-      { name: "stages", summary: "List workflow stages", usage: "bb triage stages [--json]" },
+      { name: "list", summary: "List Vibe Kanban cards", usage: "bb vibe-kanban list [--json]" },
+      { name: "show", summary: "Show a Vibe Kanban card", usage: "bb vibe-kanban show <number> [--json]" },
+      { name: "run", summary: "Run a Vibe Kanban card now", usage: "bb vibe-kanban run <number> [--json]" },
+      { name: "move", summary: "Move a Vibe Kanban card", usage: "bb vibe-kanban move <number> <stage> [--summary <text>] [--json]" },
+      { name: "stages", summary: "List workflow stages", usage: "bb vibe-kanban stages [--json]" },
     ],
     async run(argv) {
       const json = argv.includes("--json");
@@ -1355,8 +1461,8 @@ export default async function plugin(bb: BbPluginApi) {
           return {
             exitCode: 0,
             stdout:
-              "Usage: bb triage list|show|run|move|stages\n" +
-              "Cards use GitHub-style numbers, for example: bb triage show 42",
+              "Usage: bb vibe-kanban list|show|run|move|stages\n" +
+              "Cards use GitHub-style numbers, for example: bb vibe-kanban show 42",
           };
         }
         if (command === "list") {
@@ -1365,8 +1471,8 @@ export default async function plugin(bb: BbPluginApi) {
             exitCode: 0,
             stdout: json
               ? JSON.stringify({ tasks })
-              : tasks.map((task) => `Triage #${task.number}\t${getStageRow(task.stageId).name}\t${task.title}`).join("\n") ||
-                "No Triage cards.",
+              : tasks.map((task) => `Vibe Kanban #${task.number}\t${getStageRow(task.stageId).name}\t${task.title}`).join("\n") ||
+                "No Vibe Kanban cards.",
           };
         }
         if (command === "stages") {
@@ -1377,19 +1483,19 @@ export default async function plugin(bb: BbPluginApi) {
           };
         }
         const number = Number(numberText);
-        if (!Number.isInteger(number) || number <= 0) throw new Error("Provide a positive Triage number");
+        if (!Number.isInteger(number) || number <= 0) throw new Error("Provide a positive Vibe Kanban number");
         if (command === "show") {
           const task = toTask(getTaskRow(number));
           return {
             exitCode: 0,
-            stdout: json ? JSON.stringify({ task }) : `Triage #${task.number}: ${task.title}\nStage: ${getStageRow(task.stageId).name}\nRun: ${task.runState}`,
+            stdout: json ? JSON.stringify({ task }) : `Vibe Kanban #${task.number}: ${task.title}\nStage: ${getStageRow(task.stageId).name}\nRun: ${task.runState}`,
           };
         }
         if (command === "run") {
           const task = await dispatchTask(number, true);
           return {
             exitCode: 0,
-            stdout: json ? JSON.stringify({ task }) : `Started Triage #${number}.`,
+            stdout: json ? JSON.stringify({ task }) : `Started Vibe Kanban #${number}.`,
           };
         }
         if (command === "move") {
@@ -1398,13 +1504,13 @@ export default async function plugin(bb: BbPluginApi) {
           const summary = summaryIndex >= 0 ? rest.slice(summaryIndex + 1).join(" ") : undefined;
           const stageName = stageParts.join(" ").trim();
           const stage = db
-            .prepare("SELECT id, name, position, system_role FROM triage_stages WHERE name = ? COLLATE NOCASE")
+            .prepare("SELECT id, name, position, system_role FROM vibe_kanban_stages WHERE name = ? COLLATE NOCASE")
             .get(stageName) as StageRow | undefined;
           if (!stage) throw new Error(`Unknown stage “${stageName}”`);
           const task = moveTask(number, stage.id, "cli", summary, false);
           return {
             exitCode: 0,
-            stdout: json ? JSON.stringify({ task }) : `Moved Triage #${number} to ${stage.name}.`,
+            stdout: json ? JSON.stringify({ task }) : `Moved Vibe Kanban #${number} to ${stage.name}.`,
           };
         }
         throw new Error(`Unknown command “${command}”`);
@@ -1421,7 +1527,7 @@ export default async function plugin(bb: BbPluginApi) {
         if (signal.aborted) break;
         const due = db
           .prepare(
-            "SELECT number FROM triage_tasks WHERE run_state = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= ? ORDER BY scheduled_at LIMIT 20",
+            "SELECT number FROM vibe_kanban_tasks WHERE run_state = 'scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= ? ORDER BY scheduled_at LIMIT 20",
           )
           .all(Date.now()) as Array<{ number: number }>;
         for (const task of due) {
@@ -1433,5 +1539,5 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
-  bb.log.info("Triage loaded");
+  bb.log.info("Vibe Kanban loaded");
 }

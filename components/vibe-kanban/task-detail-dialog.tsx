@@ -35,13 +35,13 @@ import {
   isTaskRunning,
   presentRunState,
   providerLabel,
-} from "@/lib/triage-format";
-import type { TriageRpc } from "@/lib/triage-store";
-import type { Stage, Task } from "@/lib/triage-types";
+} from "@/lib/vibe-kanban-format";
+import type { KanbanRpc } from "@/lib/vibe-kanban-store";
+import type { Stage, Task } from "@/lib/vibe-kanban-types";
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="triage-detail-row">
+    <div className="vibe-kanban-detail-row">
       <dt>{label}</dt>
       <dd>{children}</dd>
     </div>
@@ -51,7 +51,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 export interface TaskDetailDialogProps {
   task: Task | null;
   stages: Stage[];
-  rpc: TriageRpc;
+  rpc: KanbanRpc;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onEdit: () => void;
@@ -84,22 +84,22 @@ function TaskDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="triage-detail-dialog sm:max-w-2xl">
+      <DialogContent className="vibe-kanban-detail-dialog sm:max-w-2xl">
         <DialogHeader>
-          <div className="triage-detail-eyebrow">
-            <span className="tabular-nums">Triage #{task.number}</span>
-            <span className="triage-detail-status">
+          <div className="vibe-kanban-detail-eyebrow">
+            <span className="tabular-nums">Vibe Kanban #{task.number}</span>
+            <span className="vibe-kanban-detail-status">
               <StatusDot tone={status.tone} />
               {status.label}
             </span>
           </div>
           <DialogTitle className="pr-8 text-xl leading-snug">{task.title}</DialogTitle>
-          <DialogDescription className="sr-only">Triage task details and actions</DialogDescription>
+          <DialogDescription className="sr-only">Vibe Kanban task details and actions</DialogDescription>
         </DialogHeader>
 
-        <div className="triage-detail-body">
+        <div className="vibe-kanban-detail-body">
           {task.attentionReason ? (
-            <div className="triage-detail-attention">
+            <div className="vibe-kanban-detail-attention">
               <Icon name="AlertTriangle" className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               <div>
                 <p className="font-semibold">Needs attention</p>
@@ -108,7 +108,7 @@ function TaskDetailDialog({
             </div>
           ) : null}
 
-          <div className="triage-detail-prompt">
+          <div className="vibe-kanban-detail-prompt">
             {task.description ? (
               <p className="whitespace-pre-wrap">{task.description}</p>
             ) : (
@@ -116,7 +116,7 @@ function TaskDetailDialog({
             )}
           </div>
 
-          <dl className="triage-detail-grid">
+          <dl className="vibe-kanban-detail-grid">
             <DetailRow label="Project">{task.projectName}</DetailRow>
             <DetailRow label="Branch">{task.branchName}</DetailRow>
             <DetailRow label="Machine">{task.machineName}</DetailRow>
@@ -133,7 +133,7 @@ function TaskDetailDialog({
                 onValueChange={(stageId) =>
                   void action(
                     () => rpc.call("moveTask", { number: task.number, stageId }),
-                    `Moved Triage #${task.number}`,
+                    `Moved Vibe Kanban #${task.number}`,
                   )
                 }
               >
@@ -152,7 +152,7 @@ function TaskDetailDialog({
           </dl>
         </div>
 
-        <div className="triage-dialog-footer justify-between">
+        <div className="vibe-kanban-dialog-footer justify-between">
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="ghost" className="text-destructive hover:text-destructive">
@@ -162,7 +162,7 @@ function TaskDetailDialog({
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete Triage #{task.number}?</AlertDialogTitle>
+                <AlertDialogTitle>Delete Vibe Kanban #{task.number}?</AlertDialogTitle>
                 <AlertDialogDescription>
                   The card and its event history are removed. The linked BB thread is kept.
                 </AlertDialogDescription>
@@ -173,7 +173,7 @@ function TaskDetailDialog({
                   onClick={() =>
                     void action(
                       () => rpc.call("deleteTask", { number: task.number }),
-                      `Deleted Triage #${task.number}`,
+                      `Deleted Vibe Kanban #${task.number}`,
                     ).then(() => onOpenChange(false))
                   }
                 >
@@ -192,7 +192,7 @@ function TaskDetailDialog({
                 onClick={() =>
                   void action(
                     () => rpc.call("runTask", { number: task.number }),
-                    `Started Triage #${task.number}`,
+                    `Started Vibe Kanban #${task.number}`,
                   )
                 }
               >
@@ -206,7 +206,7 @@ function TaskDetailDialog({
                 onClick={() =>
                   void action(
                     () => rpc.call("stopTask", { number: task.number }),
-                    `Stopped Triage #${task.number}`,
+                    `Stopped Vibe Kanban #${task.number}`,
                   )
                 }
               >

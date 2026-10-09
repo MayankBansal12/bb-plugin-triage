@@ -17,7 +17,7 @@ import {
   isTaskRunning,
   needsAttention,
   presentRunState,
-} from "@/lib/triage-format";
+} from "@/lib/vibe-kanban-format";
 import {
   FEED_LIMIT,
   LENS_ORDER,
@@ -30,13 +30,13 @@ import {
   type FeedRow,
   type LensId,
 } from "@/lib/notification-feed";
-import type { Task, TriageNotification } from "@/lib/triage-types";
+import type { Task, KanbanNotification } from "@/lib/vibe-kanban-types";
 
 function Tally({ count }: { count: number }) {
   if (count < 2) return null;
   return (
     <>
-      <span className="triage-notification-tally tabular-nums" aria-hidden="true">
+      <span className="vibe-kanban-notification-tally tabular-nums" aria-hidden="true">
         ×{count}
       </span>
       <span className="sr-only">, {count} times</span>
@@ -54,7 +54,7 @@ function BrowserPermissionRow() {
   return (
     <button
       type="button"
-      className="triage-notification-optin"
+      className="vibe-kanban-notification-optin"
       onClick={() => {
         void Notification.requestPermission().then((next) => {
           setPermission(next);
@@ -82,7 +82,7 @@ function NotificationDeleteButton({
   return (
     <button
       type="button"
-      className="triage-notification-delete"
+      className="vibe-kanban-notification-delete"
       aria-label={label}
       title={label}
       disabled={deleting}
@@ -107,18 +107,18 @@ function NotificationDeleteButton({
 function NotificationMetadata({ task, number }: { task: Task | null; number: number | null }) {
   const brand = task ? agentBrand(task.providerId, task.model) : null;
   return (
-    <span className="triage-notification-metadata">
-      {number !== null ? <span className="triage-notification-number">#{number}</span> : null}
+    <span className="vibe-kanban-notification-metadata">
+      {number !== null ? <span className="vibe-kanban-notification-number">#{number}</span> : null}
       {task ? <>
-        <span className="triage-notification-meta-item" title={task.projectName}>
+        <span className="vibe-kanban-notification-meta-item" title={task.projectName}>
           <Icon name="Folder" aria-hidden="true" />
           <span>{task.projectName}</span>
         </span>
-        <span className="triage-notification-meta-item" title={task.branchName}>
+        <span className="vibe-kanban-notification-meta-item" title={task.branchName}>
           <Icon name="GitBranch" aria-hidden="true" />
           <span>{task.branchName}</span>
         </span>
-        <span className="triage-notification-agent" title={`${providerLabel(task.providerId)} · ${task.model}`}>
+        <span className="vibe-kanban-notification-agent" title={`${providerLabel(task.providerId)} · ${task.model}`}>
           <Icon name={brand!.icon} aria-label={`${brand!.name} · ${task.model}`} />
         </span>
       </> : null}
@@ -137,25 +137,25 @@ function CardRowButton({
 }) {
   const status = presentRunState(row.task);
   return (
-    <div data-unread={row.unread ? "" : undefined} className="triage-notification-row">
+    <div data-unread={row.unread ? "" : undefined} className="vibe-kanban-notification-row">
       <button
         type="button"
-        className="triage-notification-row-main"
+        className="vibe-kanban-notification-row-main"
         title={row.reason ?? undefined}
         onClick={onOpen}
       >
-        <span className="triage-notification-unread-dot" aria-label={row.unread ? "Unread" : undefined} />
+        <span className="vibe-kanban-notification-unread-dot" aria-label={row.unread ? "Unread" : undefined} />
         <span className="min-w-0">
-          <span className="triage-notification-action">
-            <span className="triage-notification-action-text">{row.task.title}</span>
+          <span className="vibe-kanban-notification-action">
+            <span className="vibe-kanban-notification-action-text">{row.task.title}</span>
             <Tally count={row.events} />
           </span>
-          <span className="triage-notification-target">{row.reason || status.label}</span>
+          <span className="vibe-kanban-notification-target">{row.reason || status.label}</span>
           <NotificationMetadata task={row.task} number={row.task.number} />
         </span>
       </button>
-      <span className="triage-notification-trailing">
-        <span className="triage-notification-time tabular-nums">
+      <span className="vibe-kanban-notification-trailing">
+        <span className="vibe-kanban-notification-time tabular-nums">
           {formatShortWhen(row.stamp)}
         </span>
         {onDelete ? (
@@ -183,10 +183,10 @@ function FeedRowButton({
   const missing = row.taskNumber !== null && task === null;
 
   return (
-    <div data-unread={row.unread ? "" : undefined} className="triage-notification-row">
+    <div data-unread={row.unread ? "" : undefined} className="vibe-kanban-notification-row">
       <button
         type="button"
-        className="triage-notification-row-main"
+        className="vibe-kanban-notification-row-main"
         title={row.body || undefined}
         disabled={row.taskNumber === null || missing}
         onClick={() => {
@@ -194,24 +194,24 @@ function FeedRowButton({
           onOpen(row.taskNumber);
         }}
       >
-        <span className="triage-notification-unread-dot" aria-label={row.unread ? "Unread" : undefined} />
+        <span className="vibe-kanban-notification-unread-dot" aria-label={row.unread ? "Unread" : undefined} />
         <span className="min-w-0">
-          <span className="triage-notification-action">
-            <span className="triage-notification-action-text">{task?.title || row.taskTitle || (row.taskNumber !== null ? `Triage #${row.taskNumber}` : row.action)}</span>
+          <span className="vibe-kanban-notification-action">
+            <span className="vibe-kanban-notification-action-text">{task?.title || row.taskTitle || (row.taskNumber !== null ? `Vibe Kanban #${row.taskNumber}` : row.action)}</span>
           </span>
-          <span className="triage-notification-target">
+          <span className="vibe-kanban-notification-target">
             {row.taskNumber === null ? row.body || row.action : row.action}
             <Tally count={row.count} />
-            {missing ? <span className="triage-notification-missing"> · Card deleted</span> : null}
+            {missing ? <span className="vibe-kanban-notification-missing"> · Card deleted</span> : null}
           </span>
           {row.level === "attention" && row.body && row.body !== row.action ? (
-            <span className="triage-notification-reason">{row.body}</span>
+            <span className="vibe-kanban-notification-reason">{row.body}</span>
           ) : null}
           <NotificationMetadata task={task} number={row.taskNumber} />
         </span>
       </button>
-      <span className="triage-notification-trailing">
-        <span className="triage-notification-time tabular-nums">
+      <span className="vibe-kanban-notification-trailing">
+        <span className="vibe-kanban-notification-time tabular-nums">
           {formatShortWhen(row.createdAt)}
         </span>
         <NotificationDeleteButton label={`Delete update: ${row.action}`} onDelete={onDelete} />
@@ -221,7 +221,7 @@ function FeedRowButton({
 }
 
 export interface NotificationCenterProps {
-  notifications: TriageNotification[];
+  notifications: KanbanNotification[];
   /**
    * Every card on the board. History alone cannot say what is true now, so
    * rows are joined against live cards by number.
@@ -310,10 +310,10 @@ function NotificationCenter({
           className="size-8"
           aria-label={`Updates${unreadCount ? `, ${unreadCount} unread` : ""}`}
         >
-          <span className="triage-notification-icon" aria-hidden="true">
+          <span className="vibe-kanban-notification-icon" aria-hidden="true">
             <Icon name="Mail" className="size-4" />
             {unreadCount > 0 ? (
-              <span className="triage-notification-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
+              <span className="vibe-kanban-notification-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
             ) : null}
           </span>
         </Button>
@@ -321,10 +321,10 @@ function NotificationCenter({
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="triage-notification-panel"
+        className="vibe-kanban-notification-panel"
         mobileTitle="Updates"
       >
-        <header className="triage-notification-header">
+        <header className="vibe-kanban-notification-header">
           <span className="text-[13px] font-semibold">Updates</span>
           {unreadCount > 0 ? (
             <Button
@@ -343,8 +343,8 @@ function NotificationCenter({
             </Button>
           ) : null}
         </header>
-        <div className="triage-notification-digest" role="group" aria-label="Filter updates">
-          <button type="button" className="triage-notification-lens"
+        <div className="vibe-kanban-notification-digest" role="group" aria-label="Filter updates">
+          <button type="button" className="vibe-kanban-notification-lens"
             aria-pressed={activeLens === null}
             data-state={activeLens === null ? "active" : undefined}
             onClick={() => setLens(null)}>
@@ -359,18 +359,18 @@ function NotificationCenter({
                 type="button"
                 aria-pressed={active}
                 data-state={active ? "active" : undefined}
-                className="triage-notification-lens"
+                className="vibe-kanban-notification-lens"
                 title={LENSES[id].hint}
                 onClick={() => setLens(id)}
               >
                 <StatusDot tone={LENSES[id].tone} size="sm" />
                 <span>{LENSES[id].label}</span>
-                <span className="triage-notification-lens-count tabular-nums">{counts[id]}</span>
+                <span className="vibe-kanban-notification-lens-count tabular-nums">{counts[id]}</span>
               </button>
             );
           })}
         </div>
-        <div className="triage-notification-scroll">
+        <div className="vibe-kanban-notification-scroll">
           {cardRows.length === 0 && (!showFeed || feed.length === 0) ? (
             <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">
               {showFeed ? "No recent updates yet." : `No ${LENSES[activeLens!].label.toLowerCase()} updates.`}
@@ -379,9 +379,9 @@ function NotificationCenter({
             <>
               {cardRows.length > 0 ? (
                 <section>
-                  <h4 className="triage-notification-bucket" data-pinned={groupPinned ? "" : undefined}>
+                  <h4 className="vibe-kanban-notification-bucket" data-pinned={groupPinned ? "" : undefined}>
                     {groupLabel}
-                    <span className="triage-notification-bucket-count tabular-nums">
+                    <span className="vibe-kanban-notification-bucket-count tabular-nums">
                       {cardRows.length}
                     </span>
                   </h4>
@@ -402,7 +402,7 @@ function NotificationCenter({
               {showFeed
                 ? feed.map((group) => (
                     <section key={group.bucket}>
-                      <h4 className="triage-notification-bucket">{group.bucket}</h4>
+                      <h4 className="vibe-kanban-notification-bucket">{group.bucket}</h4>
                       {group.items.map((row) => (
                         <FeedRowButton
                           key={row.id}

@@ -1,16 +1,16 @@
 {
-  "name": "bb-plugin-triage",
-  "version": "0.1.0",
+  "name": "bb-plugin-vibe-kanban",
+  "version": "0.2.0",
   "type": "module",
   "engines": {
     "bb": ">=0.42",
     "bbPluginSdk": "^0.4.47"
   },
   "bb": {
-    "name": "Triage",
-    "description": "Keep agent tasks, progress, and work that needs your attention in one board.",
+    "name": "Vibe Kanban",
+    "description": "Plan work, set priorities, and follow your coding agents on a native BB kanban board.",
     "branding": {
-      "icon": "ListTodo"
+      "icon": "Columns2"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
@@ -55,10 +55,10 @@
   "author": "Mayank Bansal",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MayankBansal12/bb-plugin-triage.git"
+    "url": "git+https://github.com/MayankBansal12/bb-plugin-vibe-kanban.git"
   },
-  "homepage": "https://github.com/MayankBansal12/bb-plugin-triage#readme",
+  "homepage": "https://github.com/MayankBansal12/bb-plugin-vibe-kanban#readme",
   "bugs": {
-    "url": "https://github.com/MayankBansal12/bb-plugin-triage/issues"
+    "url": "https://github.com/MayankBansal12/bb-plugin-vibe-kanban/issues"
   }
 }

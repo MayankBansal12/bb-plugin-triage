@@ -7,10 +7,11 @@ async function setup(options: { failUpdate?: boolean; archived?: boolean } = {})
   const thread = makeThreadResponse({ id: "session-1", projectId: "project-1", title: "Existing conversation", visibility: "visible", archivedAt: options.archived ? 1 : null });
   let failUpdate = options.failUpdate;
   const { bb, harness } = createFakePluginHost({
-    pluginId: "triage",
+    pluginId: "vibe-kanban",
     sdk: {
       threads: {
         get: async () => thread,
+        childSummary: async () => ({ nonDeletedChildCount: 0 }),
         defaultExecutionOptions: async () => null,
         update: async (args) => {
           if (failUpdate) { failUpdate = false; throw new Error("Host disconnected"); }
@@ -38,7 +39,7 @@ test("import preserves the existing session and concurrent retries create one ca
     assert.equal(harness.inspection.sdk.callsTo("threads.spawn").length, 0);
     assert.equal(harness.inspection.sdk.callsTo("threads.send").length, 0);
     const config = await harness.behavior.resolveAgentConfiguration(makePluginAgentConfigurationContext({ thread: { id: thread.id } }));
-    assert.ok(JSON.stringify(config).includes("triage_move_task"));
+    assert.ok(JSON.stringify(config).includes("vibe_kanban_move_task"));
     await harness.behavior.callRpc("setThreadSidebar", { number: first.number, visible: true });
     assert.equal(thread.visibility, "visible");
     await harness.behavior.callRpc("setThreadSidebar", { number: first.number, visible: false });
@@ -90,7 +91,7 @@ test("rapid setting changes and individual actions keep the latest choice", asyn
   } finally { await harness.lifecycle.dispose(); }
 });
 
-test("new Triage sessions respect the default-off setting and opt-in", async () => {
+test("new Vibe Kanban sessions respect the default-off setting and opt-in", async () => {
   for (const enabled of [false, true]) {
     const { harness, thread } = await setup();
     try {
@@ -131,7 +132,7 @@ test("snapshot reports actual sidebar visibility and settings persist", async ()
     assert.equal(await visible(), false);
     await harness.behavior.callRpc("setShowInSidebar", { visible: true });
     await harness.lifecycle.reload(async (bb) => {
-      const settings = bb.settings.define({ showInSidebar: { type: "boolean", label: "Show Triage in sidebar", default: false } });
+      const settings = bb.settings.define({ showInSidebar: { type: "boolean", label: "Show Vibe Kanban in sidebar", default: false } });
       assert.equal((await settings.get()).showInSidebar, true);
     });
   } finally { await harness.lifecycle.dispose(); }
@@ -176,7 +177,7 @@ test("title renaming synchronizes the thread without changing workflow state", a
     assert.equal(renamed.title, "Revised title");
     assert.equal(renamed.stageId, "stage-todo");
     assert.equal(renamed.runState, "idle");
-    assert.ok(harness.inspection.sdk.callsTo("threads.update").some((call) => JSON.stringify(call).includes("Triage #1: Revised title")));
+    assert.ok(harness.inspection.sdk.callsTo("threads.update").some((call) => JSON.stringify(call).includes("Vibe Kanban #1: Revised title")));
     await assert.rejects(harness.behavior.callRpc("renameTask", { number: task.number, title: " " }));
   } finally { await harness.lifecycle.dispose(); }
 });
@@ -189,7 +190,7 @@ test("agent instructions explain completion and attention using current stage na
     const config = await harness.behavior.resolveAgentConfiguration(makePluginAgentConfigurationContext({ thread: { id: thread.id } }));
     const instructions = JSON.stringify(config);
     assert.match(instructions, /Before your final response/);
-    assert.match(instructions, /call triage_move_task with Shipped/);
+    assert.match(instructions, /call vibe_kanban_move_task with Shipped/);
     assert.match(instructions, /Do not leave finished work/);
     assert.match(instructions, /approve, decide, provide access/);
   } finally { await harness.lifecycle.dispose(); }
@@ -232,11 +233,11 @@ test("stage tool rejects another thread and preserves the owner's card", async (
   const { harness, thread, importThread } = await setup();
   try {
     const task = await importThread();
-    await assert.rejects(harness.behavior.callAgentTool("triage_move_task", {
-      number: task.number, stage: "Completed", summary: "Done",
+    await assert.rejects(harness.behavior.callAgentTool("vibe_kanban_move_task", {
+      number: task.number, stage: "Done", summary: "Done",
     }, { threadId: "unrelated-thread" }), /not assigned/);
-    await harness.behavior.callAgentTool("triage_move_task", {
-      number: task.number, stage: "Completed", summary: "Verified and complete",
+    await harness.behavior.callAgentTool("vibe_kanban_move_task", {
+      number: task.number, stage: "Done", summary: "Verified and complete",
     }, { threadId: thread.id });
     await harness.behavior.emitThreadEvent("thread.idle", { thread, lastAssistantText: "Done" });
     harness.inspection.sdk.stub("projects.list", async () => []);

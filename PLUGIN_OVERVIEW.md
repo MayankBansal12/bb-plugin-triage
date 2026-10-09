@@ -1,24 +1,19 @@
-## Plan and run
+# Vibe Kanban
 
-Create a task, choose its project and agent, and run it now or schedule it for
-later. Turn an existing session into a card without starting another agent.
-Each card opens its linked conversation.
+Plan, prioritize, and follow coding-agent work inside BB.
 
-## Follow the work
+- A compact board with configurable columns and per-column task creation.
+- Custom colored labels, user-controlled priorities, and priority sorting.
+- A compact toolbar with project and view selection, search, and a single Filters menu
+  for machines, agents, labels, and sorting.
+- Clear live agent activity and child-thread counts when children exist.
+- Native BB conversations and orchestration, one click from the board.
+- Keep tasks on the board, schedule them, or start their agents immediately.
+- Recent updates, archived cards, and optional sidebar integration.
 
-- Organize cards into stages you can rename and reorder.
-- Filter running tasks, unread updates, and settled work.
-- See recent activity and tasks that need your attention.
-- Optionally show cards and linked sessions in the sidebar.
-
-Assigned agents report progress and completion through `triage_move_task`.
-Use `bb triage list`, `bb triage show`, and `bb triage move` from the CLI.
-
-## Requirements
+Assigned agents update workflow stages through `vibe_kanban_move_task`.
+Use `bb vibe-kanban list`, `show`, `run`, `move`, and `stages` from the CLI.
 
 Requires BB 0.42+ with a compatible Plugin SDK 0.4.47 runtime and a configured
-agent provider. Provider accounts and usage charges apply. No separate Triage
-account is needed. Cards and updates stay in BB's plugin-owned SQLite database.
-
-Scheduled work runs while BB and Triage are running; overdue tasks are picked
-up when they resume. Browser notifications require permission.
+agent provider. Data stays in BB's plugin database. Scheduled work starts while
+BB and Vibe Kanban are running, including overdue work after a restart.
